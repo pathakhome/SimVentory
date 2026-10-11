@@ -1,12 +1,15 @@
-import { getAllItems, getImage, saveItem, addHistory, getCategories, getLocations } from '../db.js';
+import { getAllItems, getImage, saveItem, addHistory, getCategories, getLocations, saveLocation } from '../db.js';
 import { getCategoryColor, getCategoryIcon } from '../categories.js';
+import { showToast } from '../toast.js';
 
 let cachedImageURLs = {};
 
 export async function renderInventory(container, { navigateTo, openItemModal, refreshView }) {
-  const items = await getAllItems();
+  let items = await getAllItems();
   const categories = await getCategories();
-  const locations = await getLocations();
+  let locations = await getLocations();
+
+  const selectedItemIds = new Set();
 
   // Get saved preferences
   const viewMode = localStorage.getItem('cv_viewMode') || 'grid';
@@ -75,6 +78,77 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       </div>
 
       <div id="items-container"></div>
+
+      <!-- Floating Batch Actions Bar -->
+      <div id="batch-actions-bar" class="batch-actions-bar" style="display:none;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="batch-badge" id="batch-selected-count">0</span>
+          <span style="font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary);">selected</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-batch-move" style="background: linear-gradient(135deg, #6366f1, #4f46e5); border: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(99,102,241,0.3);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Move to Location
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-batch-select-all">
+            Select All Filtered
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-batch-clear" title="Clear selection">
+            ✕ Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- Batch Move Modal Dialog -->
+      <div id="batch-move-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 480px; border-radius: var(--border-radius-lg); overflow: hidden;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-primary);">
+            <h2 class="modal-title" style="font-size: var(--font-size-lg); font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>📍</span> Move Components
+            </h2>
+            <button class="modal-close" id="batch-move-modal-close" aria-label="Close" style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: 18px;">✕</button>
+          </div>
+          <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Relocating <strong id="batch-move-count-text" style="color: var(--accent-primary);">0</strong> selected components to a new storage location.
+            </div>
+            
+            <div>
+              <label for="batch-move-dest-input" style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary); display: block; margin-bottom: 6px;">
+                Destination Storage Location <span class="required" style="color: var(--accent-danger);">*</span>
+              </label>
+              <input type="text" id="batch-move-dest-input" list="batch-move-locations-datalist" placeholder="e.g. Drawer A1, Bin 3, Shelf 2" required style="width: 100%; padding: 8px 12px; font-size: var(--font-size-sm); border-radius: var(--border-radius-md); border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);" />
+              <datalist id="batch-move-locations-datalist">
+                ${locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
+              </datalist>
+            </div>
+
+            <div id="batch-move-chips-wrapper" style="${locations.length === 0 ? 'display:none;' : ''}">
+              <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 6px;">Or click an existing location:</span>
+              <div id="batch-move-chips-container" style="display: flex; gap: 6px; flex-wrap: wrap; max-height: 80px; overflow-y: auto;">
+                ${locations.map(l => `
+                  <button type="button" class="btn-location-chip" data-loc="${escapeAttr(l.name)}" style="font-size: 11.5px; padding: 3px 8px; border-radius: 99px; background: var(--bg-secondary); border: 1px solid var(--border-secondary); color: var(--text-secondary); cursor: pointer; transition: all 0.15s ease;">
+                    📍 ${escapeHtml(l.name)}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div>
+              <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 6px;">Items to relocate:</span>
+              <div id="batch-move-items-preview" style="max-height: 120px; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary);">
+            <button type="button" class="btn btn-secondary" id="batch-move-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="batch-move-confirm-btn" style="background: linear-gradient(135deg, #6366f1, #4f46e5); border: none;">
+              Confirm Move
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -158,15 +232,18 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       `;
       const emptyBtn = document.getElementById('empty-add-btn');
       if (emptyBtn) emptyBtn.addEventListener('click', () => navigateTo('add-item'));
+      updateBatchBar();
       return;
     }
 
     if (mode === 'grid') {
       itemsContainer.innerHTML = `<div class="items-grid">${filtered.map(item => renderGridCard(item)).join('')}</div>`;
     } else {
+      const isAllChecked = filtered.length > 0 && filtered.every(i => selectedItemIds.has(i.id));
       itemsContainer.innerHTML = `
         <div class="items-list">
           <div class="item-list-row header">
+            <span><input type="checkbox" id="select-all-header-checkbox" ${isAllChecked ? 'checked' : ''} title="Select all filtered items" style="width:18px; height:18px; cursor:pointer;" /></span>
             <span></span>
             <span>Name</span>
             <span>Category</span>
@@ -182,6 +259,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 
     // Attach event listeners
     attachItemListeners();
+    updateBatchBar();
   }
 
   function renderGridCard(item) {
@@ -189,10 +267,12 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     const catColor = getCategoryColor(item.category, categories);
     const catIcon = getCategoryIcon(item.category, categories);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
+    const isSelected = selectedItemIds.has(item.id);
 
     return `
-      <div class="item-card" data-item-id="${item.id}">
+      <div class="item-card ${isSelected ? 'is-selected' : ''}" data-item-id="${item.id}">
         <div class="item-card-image">
+          <input type="checkbox" class="item-select-checkbox" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item to move" />
           ${imgSrc ? `<img src="${imgSrc}" alt="${escapeHtml(item.name)}" loading="lazy"/>` : `
             <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           `}
@@ -232,9 +312,11 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     const catColor = getCategoryColor(item.category, categories);
     const catIcon = getCategoryIcon(item.category, categories);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
+    const isSelected = selectedItemIds.has(item.id);
 
     return `
-      <div class="item-list-row" data-item-id="${item.id}">
+      <div class="item-list-row ${isSelected ? 'is-selected' : ''}" data-item-id="${item.id}">
+        <input type="checkbox" class="item-select-checkbox-list" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item to move" style="width:18px; height:18px; cursor:pointer;" />
         ${imgSrc ? `<img class="item-list-img" src="${imgSrc}" alt="${escapeHtml(item.name)}"/>` : `<div class="item-list-img" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>`}
         <span class="item-list-name">${escapeHtml(item.name)}</span>
         <span class="item-list-category" style="color: ${catColor};">${catIcon} ${item.category}</span>
@@ -251,14 +333,82 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     `;
   }
 
+  function updateBatchBar() {
+    const bar = document.getElementById('batch-actions-bar');
+    const countBadge = document.getElementById('batch-selected-count');
+    const selectAllBtn = document.getElementById('btn-batch-select-all');
+
+    if (bar) {
+      bar.style.display = selectedItemIds.size > 0 ? 'flex' : 'none';
+    }
+    if (countBadge) {
+      countBadge.textContent = selectedItemIds.size;
+    }
+    if (selectAllBtn) {
+      const filtered = getFilteredItems();
+      const isAll = filtered.length > 0 && filtered.every(i => selectedItemIds.has(i.id));
+      selectAllBtn.textContent = isAll ? 'Deselect All' : 'Select All Filtered';
+    }
+
+    // Update row/card styles and checkboxes
+    container.querySelectorAll('.item-card, .item-list-row:not(.header)').forEach(el => {
+      const id = el.dataset.itemId;
+      const isSelected = selectedItemIds.has(id);
+      el.classList.toggle('is-selected', isSelected);
+      const chk = el.querySelector('.item-select-checkbox, .item-select-checkbox-list');
+      if (chk) chk.checked = isSelected;
+    });
+
+    const selectAllHeader = container.querySelector('#select-all-header-checkbox');
+    if (selectAllHeader) {
+      const filtered = getFilteredItems();
+      selectAllHeader.checked = filtered.length > 0 && filtered.every(i => selectedItemIds.has(i.id));
+    }
+  }
+
   function attachItemListeners() {
-    // Card/row click → open detail
+    // Card/row click → open detail (ignore clicks on checkboxes and buttons)
     container.querySelectorAll('.item-card, .item-list-row:not(.header)').forEach(el => {
       el.addEventListener('click', (e) => {
-        if (e.target.closest('.qty-btn') || e.target.closest('.item-card-favorite') || e.target.closest('.item-list-fav')) return;
+        if (
+          e.target.closest('.qty-btn') ||
+          e.target.closest('.item-card-favorite') ||
+          e.target.closest('.item-list-fav') ||
+          e.target.closest('.item-select-checkbox') ||
+          e.target.closest('.item-select-checkbox-list')
+        ) return;
         openItemModal(el.dataset.itemId);
       });
     });
+
+    // Checkboxes click
+    container.querySelectorAll('.item-select-checkbox, .item-select-checkbox-list').forEach(chk => {
+      chk.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = chk.dataset.selectId;
+        if (chk.checked) {
+          selectedItemIds.add(id);
+        } else {
+          selectedItemIds.delete(id);
+        }
+        updateBatchBar();
+      });
+    });
+
+    // Header Select All Checkbox
+    const selectAllHeader = container.querySelector('#select-all-header-checkbox');
+    if (selectAllHeader) {
+      selectAllHeader.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const filtered = getFilteredItems();
+        if (selectAllHeader.checked) {
+          filtered.forEach(i => selectedItemIds.add(i.id));
+        } else {
+          filtered.forEach(i => selectedItemIds.delete(i.id));
+        }
+        updateBatchBar();
+      });
+    }
 
     // Quantity buttons
     container.querySelectorAll('.qty-btn').forEach(btn => {
@@ -292,6 +442,141 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
         renderItems();
       });
     });
+  }
+
+  // Batch actions bar buttons
+  const btnBatchMove = document.getElementById('btn-batch-move');
+  if (btnBatchMove) {
+    btnBatchMove.addEventListener('click', () => {
+      openBatchMoveModal();
+    });
+  }
+
+  const btnBatchSelectAll = document.getElementById('btn-batch-select-all');
+  if (btnBatchSelectAll) {
+    btnBatchSelectAll.addEventListener('click', () => {
+      const filtered = getFilteredItems();
+      const isAll = filtered.length > 0 && filtered.every(i => selectedItemIds.has(i.id));
+      if (isAll) {
+        filtered.forEach(i => selectedItemIds.delete(i.id));
+      } else {
+        filtered.forEach(i => selectedItemIds.add(i.id));
+      }
+      updateBatchBar();
+    });
+  }
+
+  const btnBatchClear = document.getElementById('btn-batch-clear');
+  if (btnBatchClear) {
+    btnBatchClear.addEventListener('click', () => {
+      selectedItemIds.clear();
+      updateBatchBar();
+    });
+  }
+
+  // Batch Move Modal Handling
+  function openBatchMoveModal() {
+    if (selectedItemIds.size === 0) return;
+    const modal = document.getElementById('batch-move-modal');
+    if (!modal) return;
+
+    const countText = document.getElementById('batch-move-count-text');
+    if (countText) countText.textContent = selectedItemIds.size;
+
+    const input = document.getElementById('batch-move-dest-input');
+    if (input) input.value = '';
+
+    // Selected items preview
+    const previewContainer = document.getElementById('batch-move-items-preview');
+    if (previewContainer) {
+      const selectedItems = items.filter(i => selectedItemIds.has(i.id));
+      previewContainer.innerHTML = selectedItems.map(item => `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span style="font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(item.name)}</span>
+          <span style="font-size:11px; color:var(--text-tertiary); white-space:nowrap;">📍 ${escapeHtml(item.location || 'Unsorted')}</span>
+        </div>
+      `).join('');
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      input?.focus();
+    }, 60);
+  }
+
+  function closeBatchMoveModal() {
+    const modal = document.getElementById('batch-move-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  document.getElementById('batch-move-modal-close')?.addEventListener('click', closeBatchMoveModal);
+  document.getElementById('batch-move-cancel-btn')?.addEventListener('click', closeBatchMoveModal);
+
+  // Location chip click inside modal
+  container.querySelectorAll('.btn-location-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const loc = chip.dataset.loc;
+      const input = document.getElementById('batch-move-dest-input');
+      if (input) {
+        input.value = loc;
+        input.focus();
+      }
+    });
+  });
+
+  // Confirm move button
+  document.getElementById('batch-move-confirm-btn')?.addEventListener('click', async () => {
+    const destInput = document.getElementById('batch-move-dest-input');
+    const newLocation = (destInput?.value || '').trim();
+
+    if (!newLocation) {
+      showToast('Destination storage location is required', 'warning');
+      destInput?.focus();
+      return;
+    }
+
+    const count = selectedItemIds.size;
+    showToast(`Relocating ${count} component${count !== 1 ? 's' : ''} to "${newLocation}"...`, 'info');
+
+    try {
+      await saveLocation({ name: newLocation });
+
+      for (const id of selectedItemIds) {
+        const item = items.find(i => i.id === id);
+        if (item) {
+          item.location = newLocation;
+          item.updatedAt = new Date().toISOString();
+          await saveItem(item);
+          await addHistory(item.id, 'moved', 0);
+        }
+      }
+
+      selectedItemIds.clear();
+      closeBatchMoveModal();
+      showToast(`✓ Successfully moved ${count} component${count !== 1 ? 's' : ''} to "${newLocation}"!`, 'success');
+
+      // Refresh locations list
+      locations = await getLocations();
+      updateLocationSelect();
+      renderItems();
+    } catch (err) {
+      console.error('Batch move error:', err);
+      showToast('Failed to move components: ' + err.message, 'error');
+    }
+  });
+
+  function updateLocationSelect() {
+    const curVal = locationSelect.value;
+    locationSelect.innerHTML = `
+      <option value="All" ${curVal === 'All' ? 'selected' : ''}>📍 All Locations</option>
+      ${locations.map(loc => `<option value="${escapeHtml(loc.name)}" ${curVal === loc.name ? 'selected' : ''}>📍 ${escapeHtml(loc.name)}</option>`).join('')}
+    `;
+
+    // Also update datalist for modal
+    const datalist = document.getElementById('batch-move-locations-datalist');
+    if (datalist) {
+      datalist.innerHTML = locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('');
+    }
   }
 
   // Event listeners
@@ -330,4 +615,9 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 function escapeHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

@@ -76,7 +76,7 @@ export function getQueueSummary() {
 /**
  * Add multiple image files or blobs to the queue
  */
-export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', defaultQuantity = 1, defaultThreshold = 0 } = {}) {
+export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', defaultHint = '', defaultQuantity = 1, defaultThreshold = 0 } = {}) {
   loadQueue();
   const newItems = [];
 
@@ -92,6 +92,7 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
       status: 'queued', // queued | processing | ready | error
       error: null,
       location: defaultLocation,
+      hint: defaultHint,
       quantity: defaultQuantity,
       lowStockThreshold: defaultThreshold,
       aiData: null,
@@ -146,6 +147,7 @@ export async function processQueue() {
         const aiResult = await analyzeComponentImage({
           image: imageBlob,
           categories: catNames,
+          hint: current.hint || '',
         });
 
         current.status = 'ready';

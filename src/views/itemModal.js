@@ -1,7 +1,7 @@
 /**
  * Item Detail Modal renderer.
  */
-import { getItem, getImage, getHistory, deleteItem, saveItem, addHistory, getCategories } from '../db.js';
+import { getItem, getImage, getHistory, deleteItem, saveItem, addHistory, getCategories, saveLocation } from '../db.js';
 import { getCategoryColor, getCategoryIcon } from '../categories.js';
 import { showToast } from '../toast.js';
 import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
@@ -60,11 +60,13 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
           <div class="modal-detail-label">Part Number</div>
           <div class="modal-detail-value">${escapeHtml(item.partNumber)}</div>
         </div>` : ''}
-        ${item.location ? `
         <div class="modal-detail-item">
           <div class="modal-detail-label">Location</div>
-          <div class="modal-detail-value">📍 ${escapeHtml(item.location)}</div>
-        </div>` : ''}
+          <div class="modal-detail-value" style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+            <span>📍 ${escapeHtml(item.location || 'Unassigned')}</span>
+            <button type="button" class="btn btn-secondary btn-sm" id="modal-move-btn" style="padding: 2px 8px; font-size: 11px;" title="Move to another storage location">Move</button>
+          </div>
+        </div>
         ${item.supplierInfo ? `
         <div class="modal-detail-item">
           <div class="modal-detail-label">Supplier</div>
@@ -228,6 +230,31 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
 
   const btnAiFooter = document.getElementById('modal-ai-footer-btn');
   if (btnAiFooter) btnAiFooter.addEventListener('click', () => handleAIAnalysis(btnAiFooter));
+
+  // Quick Move Location
+  const btnMove = document.getElementById('modal-move-btn');
+  if (btnMove) {
+    btnMove.addEventListener('click', async () => {
+      const newLoc = prompt(`Relocate "${item.name}" to:`, item.location || '');
+      if (newLoc === null) return;
+      const cleanLoc = newLoc.trim();
+      if (!cleanLoc) {
+        showToast('Storage location cannot be empty', 'warning');
+        return;
+      }
+      if (cleanLoc === item.location) return;
+
+      item.location = cleanLoc;
+      item.updatedAt = new Date().toISOString();
+      await saveItem(item);
+      try { await saveLocation({ name: cleanLoc }); } catch (_) {}
+      await addHistory(item.id, 'moved', 0);
+      showToast(`✓ Relocated "${item.name}" to "${cleanLoc}"!`, 'success');
+      closeModal();
+      if (refreshView) refreshView();
+      openItemDetailModal(itemId, { navigateTo, refreshView });
+    });
+  }
 
   // Edit
   document.getElementById('modal-edit-btn').addEventListener('click', () => {

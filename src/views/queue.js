@@ -87,15 +87,24 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
               </p>
             </div>
             
-            <!-- Batch Mandatory Storage Location -->
-            <div style="display: flex; align-items: center; gap: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); padding: 6px 12px; border-radius: var(--border-radius-md);">
-              <label for="queue-batch-location" style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); white-space: nowrap;">
-                📍 Batch Location <span class="required" style="color: var(--accent-danger);">*</span>:
-              </label>
-              <input type="text" id="queue-batch-location" list="batch-locations-list" placeholder="e.g. Drawer A1, Bin 3" style="font-size: var(--font-size-xs); padding: 4px 8px; width: 170px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);" />
-              <datalist id="batch-locations-list">
-                ${locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
-              </datalist>
+            <!-- Batch Mandatory Storage Location & Batch AI Hint -->
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); padding: 6px 12px; border-radius: var(--border-radius-md);">
+                <label for="queue-batch-location" style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); white-space: nowrap;">
+                  📍 Batch Location <span class="required" style="color: var(--accent-danger);">*</span>:
+                </label>
+                <input type="text" id="queue-batch-location" list="batch-locations-list" placeholder="e.g. Drawer A1, Bin 3" style="font-size: var(--font-size-xs); padding: 4px 8px; width: 150px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);" />
+                <datalist id="batch-locations-list">
+                  ${locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
+                </datalist>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); padding: 6px 12px; border-radius: var(--border-radius-md);">
+                <label for="queue-batch-hint" style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); white-space: nowrap;">
+                  💡 Batch AI Hint:
+                </label>
+                <input type="text" id="queue-batch-hint" placeholder="e.g. SMD 0805, 3.3V sensors" style="font-size: var(--font-size-xs); padding: 4px 8px; width: 170px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);" title="Optional hint provided to AI vision for all photos in this batch" />
+              </div>
             </div>
           </div>
 
@@ -301,13 +310,15 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     const cameraInput = document.getElementById('queue-camera-input');
     const dropzone = document.getElementById('queue-dropzone');
     const batchLocInput = document.getElementById('queue-batch-location');
+    const batchHintInput = document.getElementById('queue-batch-hint');
 
     // Trigger upload
     const handleFiles = async (files) => {
       if (!files || files.length === 0) return;
       const defaultLoc = (batchLocInput?.value || '').trim() || 'Unsorted';
+      const defaultHint = (batchHintInput?.value || '').trim();
       showToast(`Adding ${files.length} photo${files.length !== 1 ? 's' : ''} to AI queue...`, 'info');
-      await addFilesToQueue(files, { defaultLocation: defaultLoc, defaultQuantity: 1, defaultThreshold: 0 });
+      await addFilesToQueue(files, { defaultLocation: defaultLoc, defaultHint, defaultQuantity: 1, defaultThreshold: 0 });
     };
 
     if (dropzone) {

@@ -407,7 +407,7 @@ export async function testAIConnection(customSettings = null) {
 /**
  * Internal helper to dispatch a vision inference request to a specific model configuration.
  */
-async function executeVisionRequest(config, base64Full, categories = []) {
+async function executeVisionRequest(config, base64Full, categories = [], hint = '') {
   const { provider, endpoint, apiKey, model, useServerProxy, systemPrompt } = config;
   const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom;
 
@@ -421,10 +421,18 @@ async function executeVisionRequest(config, base64Full, categories = []) {
 
   const categoryListStr = categories.length > 0 ? categories.join(', ') : 'Sensors, ICs, Resistors, Capacitors, LEDs, Connectors, Switches, Motors, Modules, Other';
 
+  const trimmedHint = (hint || '').trim();
+  let hintSnippet = '';
+  if (trimmedHint) {
+    hintSnippet = `\n\nUSER-PROVIDED IDENTIFICATION HINT / CLUE:\n"${trimmedHint}"\nPlease take this user clue into account to increase recognition accuracy (e.g., verifying part numbers, package footprint, voltage rating, or IC function), but cross-reference it with the visual evidence in the image.`;
+  }
+
   const promptTemplate = (systemPrompt && systemPrompt.trim()) ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
-  const systemInstructions = promptTemplate.includes('{CATEGORIES}')
+  const baseInstructions = promptTemplate.includes('{CATEGORIES}')
     ? promptTemplate.replace('{CATEGORIES}', categoryListStr)
     : `${promptTemplate}\n\nAvailable categories in SimVentory: [${categoryListStr}]. Choose the closest matching category.`;
+
+  const systemInstructions = baseInstructions + hintSnippet;
 
   let rawResponseText = '';
 
@@ -484,7 +492,7 @@ async function executeVisionRequest(config, base64Full, categories = []) {
           content: [
             {
               type: 'text',
-              text: 'Please identify this electronic component and output the requested JSON object.',
+              text: 'Please identify this electronic component and output the requested JSON object.' + (trimmedHint ? `\nUser hint: "${trimmedHint}".` : ''),
             },
             {
               type: 'image_url',
@@ -535,9 +543,10 @@ async function executeVisionRequest(config, base64Full, categories = []) {
  * @param {Blob|File|string} options.image - Component photo blob or base64 data URL
  * @param {Array<string>} [options.categories] - List of current category names
  * @param {Object} [options.existingItem] - Existing item data if editing
+ * @param {string} [options.hint] - Optional user hint/clue to boost recognition accuracy
  * @returns {Promise<Object>} Extracted item details
  */
-export async function analyzeComponentImage({ image, categories = [], existingItem = null }) {
+export async function analyzeComponentImage({ image, categories = [], existingItem = null, hint = '' }) {
   await fetchAISettings().catch(() => {});
   const settings = getAISettings();
   if (!settings.enabled) {
@@ -595,7 +604,7 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
   if (hasBackup && rpmStatus.isLimitReached) {
     console.warn(`[AI Service] Primary model rate limit (${rpmStatus.rpmLimit} req/min) reached. Auto-switching to backup model (${backupConfig.model}). Resets in ${rpmStatus.availableInSeconds}s.`);
     try {
-      const backupResult = await executeVisionRequest(backupConfig, base64Full, categories);
+      const backupResult = await executeVisionRequest(backupConfig, base64Full, categories, hint);
       backupResult.switchedToBackup = true;
       backupResult.backupReason = `Primary model rate limit (${rpmStatus.rpmLimit} req/min) reached. Auto-switched to backup model.`;
       backupResult.modelUsed = `${backupConfig.model} (Backup: Rate limit)`;
@@ -609,7 +618,7 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
   // 2. Try Primary Model
   try {
     recordPrimaryRequest();
-    const result = await executeVisionRequest(primaryConfig, base64Full, categories);
+    const result = await executeVisionRequest(primaryConfig, base64Full, categories, hint);
     result.switchedToBackup = false;
     return result;
   } catch (primaryErr) {
@@ -618,7 +627,7 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
     if (hasBackup) {
       console.warn(`[AI Service] Primary model (${primaryConfig.model}) failed: ${primaryErr.message}. Invoking backup model (${backupConfig.model})...`);
       try {
-        const backupResult = await executeVisionRequest(backupConfig, base64Full, categories);
+        const backupResult = await executeVisionRequest(backupConfig, base64Full, categories, hint);
         backupResult.switchedToBackup = true;
         backupResult.backupReason = `Primary model failed (${primaryErr.message}). Automatically switched to backup model.`;
         backupResult.modelUsed = `${backupConfig.model} (Backup: Failover)`;

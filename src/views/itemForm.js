@@ -97,19 +97,25 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                 </div>
               `}
             </div>
-            <!-- AI Photo Identification Banner -->
-            <div id="ai-photo-hint-banner" style="display: ${existingImageUrl ? 'flex' : 'none'}; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12)); border: 1px solid rgba(99,102,241,0.3); border-radius: var(--border-radius-md); padding: 8px 12px; margin-top: 8px; flex-wrap: wrap; gap: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 16px;">✨</span>
-                <div>
-                  <div style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary);">AI Component Recognition</div>
-                  <div style="font-size: 11px; color: var(--text-secondary);">Identify IC markings, specs, and autofill this form</div>
+            <!-- AI Photo Identification Banner with Hint Field -->
+            <div id="ai-photo-hint-banner" style="display: flex; flex-direction: column; gap: 8px; background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12)); border: 1px solid rgba(99,102,241,0.3); border-radius: var(--border-radius-md); padding: 10px 12px; margin-top: 8px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 16px;">✨</span>
+                  <div>
+                    <div style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary);">AI Component Agent</div>
+                    <div style="font-size: 11px; color: var(--text-secondary);">Identify IC markings, footprint, pinout & specs</div>
+                  </div>
                 </div>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-trigger-ai" style="padding: 6px 14px; font-size: var(--font-size-xs); font-weight: 600; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(99,102,241,0.35);">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  Auto-Fill with AI
+                </button>
               </div>
-              <button type="button" class="btn btn-primary btn-sm" id="btn-trigger-ai" style="padding: 4px 12px; font-size: var(--font-size-xs); background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; display: inline-flex; align-items: center; gap: 4px;">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                Auto-Fill with AI
-              </button>
+              <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-card); padding: 5px 8px 5px 10px; border-radius: var(--border-radius-sm); border: 1px solid var(--border-secondary);">
+                <span style="font-size: 11.5px; color: var(--accent-primary); font-weight: 600; white-space: nowrap;">💡 AI Prompt Hint:</span>
+                <input type="text" id="ai-component-hint" placeholder="Add optional clue to boost AI accuracy (e.g. SMD 0805, 3.3V LDO, rotary encoder, 7805)..." style="width: 100%; border: none; background: transparent; font-size: 11.5px; color: var(--text-primary); outline: none; padding: 2px 0;" title="Optional hint added to AI prompt" />
+              </div>
             </div>
           </div>
 
@@ -394,8 +400,6 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       removeImage = true;
       existingImageUrl = null;
       uploadArea.classList.remove('has-image');
-      const banner = document.getElementById('ai-photo-hint-banner');
-      if (banner) banner.style.display = 'none';
       uploadArea.innerHTML = `
         <input type="file" id="image-file-input" accept="image/*" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
         <input type="file" id="camera-file-input" accept="image/*" capture="environment" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
@@ -427,6 +431,16 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     });
   }
 
+  const aiHintInput = document.getElementById('ai-component-hint');
+  if (aiHintInput && btnTriggerAI) {
+    aiHintInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAIAutofill(btnTriggerAI);
+      }
+    });
+  }
+
   // AI Autofill Core Handler
   async function handleAIAutofill(triggerBtn) {
     const targetImage = imageFile || existingImageUrl;
@@ -441,6 +455,8 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       return;
     }
 
+    const userHint = (document.getElementById('ai-component-hint')?.value || '').trim();
+
     const originalHTML = triggerBtn ? triggerBtn.innerHTML : '';
     if (triggerBtn) {
       triggerBtn.disabled = true;
@@ -449,12 +465,13 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
         Analyzing...
       `;
     }
-    showToast('AI is identifying markings & specifications...', 'info');
+    showToast(userHint ? `Analyzing photo with hint "${userHint}"...` : 'AI is identifying markings & specifications...', 'info');
 
     try {
       const detected = await analyzeComponentImage({
         image: targetImage,
         categories: categories.map(c => c.name),
+        hint: userHint,
         existingItem: {
           name: document.getElementById('item-name')?.value,
           partNumber: document.getElementById('item-partnum')?.value,
