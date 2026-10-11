@@ -29,9 +29,9 @@ export async function renderDashboard(container, { navigateTo, openItemModal, op
           <p>Overview of your electronics inventory</p>
         </div>
         <div style="display:flex; gap:8px;">
-          <button class="btn btn-secondary btn-sm" id="dash-quick-scan">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
-            Scan Code
+          <button class="btn btn-secondary btn-sm" id="dash-quick-queue">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            AI Intake Queue
           </button>
           <button class="btn btn-primary btn-sm" id="dash-quick-add">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -44,15 +44,15 @@ export async function renderDashboard(container, { navigateTo, openItemModal, op
       <div class="empty-state" style="margin-bottom: var(--space-6); background: var(--bg-card); border: 1px dashed var(--border-secondary); border-radius: var(--radius-xl); padding: var(--space-8);">
         <div style="font-size: 2.5rem; margin-bottom: var(--space-2);">⚡</div>
         <h3 style="font-size: var(--font-size-xl); margin-bottom: var(--space-2);">Your Inventory is Ready</h3>
-        <p style="max-width: 460px; margin: 0 auto var(--space-5); color: var(--text-secondary); line-height: 1.6;">Start tracking your sensors, ICs, modules, and switches. Add items manually or scan a component barcode or label.</p>
+        <p style="max-width: 460px; margin: 0 auto var(--space-5); color: var(--text-secondary); line-height: 1.6;">Start tracking your sensors, ICs, modules, and switches. Add items manually or bulk upload component photos into the AI intake queue.</p>
         <div style="display: flex; gap: var(--space-3); justify-content: center; flex-wrap: wrap;">
           <button class="btn btn-primary" id="dash-add-btn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
             Add Component
           </button>
-          <button class="btn btn-secondary" id="dash-scan-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
-            Scan Barcode / QR
+          <button class="btn btn-secondary" id="dash-queue-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Bulk AI Intake Queue
           </button>
         </div>
       </div>
@@ -191,8 +191,8 @@ export async function renderDashboard(container, { navigateTo, openItemModal, op
   const quickAdd = document.getElementById('dash-quick-add');
   if (quickAdd) quickAdd.addEventListener('click', () => navigateTo('add-item'));
 
-  const quickScan = document.getElementById('dash-quick-scan');
-  if (quickScan && openScanner) quickScan.addEventListener('click', () => openScanner());
+  const quickQueue = document.getElementById('dash-quick-queue');
+  if (quickQueue) quickQueue.addEventListener('click', () => navigateTo('queue'));
 
   // Empty state buttons
   const dashAddBtn = document.getElementById('dash-add-btn');
@@ -200,9 +200,9 @@ export async function renderDashboard(container, { navigateTo, openItemModal, op
     dashAddBtn.addEventListener('click', () => navigateTo('add-item'));
   }
 
-  const dashScanBtn = document.getElementById('dash-scan-btn');
-  if (dashScanBtn && openScanner) {
-    dashScanBtn.addEventListener('click', () => openScanner());
+  const dashQueueBtn = document.getElementById('dash-queue-btn');
+  if (dashQueueBtn) {
+    dashQueueBtn.addEventListener('click', () => navigateTo('queue'));
   }
 
   // Animate category bars

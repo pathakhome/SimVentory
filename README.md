@@ -56,13 +56,15 @@ node server.js
 
 ---
 
-## 📸 Barcode & Scanning Workflow
+## 🚀 AI Intake Queue & Vision Workflow
 
-1. Tap **Scan Code** in the top navigation or on the dashboard.
-2. Point your camera at any 1D barcode or 2D QR code on a component bag or label.
-3. **If recognized**: SimVentory shows component details with quick `-1 Use` and `+1 Restock` buttons.
-4. **If new**: Click **"+ Add Component with this SKU"** to open the creation form with the part number automatically filled in.
-5. In the Add/Edit form, you can also click the **"Scan Barcode"** button next to Part Number / SKU at any time.
+1. Navigate to **AI Queue** in the sidebar navigation or from the Dashboard quick action.
+2. Set a **Batch Location\*** (e.g., `Drawer A1`, `Bin 3`) or specify storage locations individually per component.
+3. Drag & drop or select photos (up to 50 at once) or snap photos using your device camera.
+4. SimVentory automatically analyzes images in the background using your configured Vision model (with backup model failover and RPM limiter).
+5. Review generated component attributes (Name, Category, Package, SKU, Specs, Tags) right on the staged cards or click **Fine-tune Details** to customize.
+6. Click **Approve & Add** for single items or **Approve All Ready** to commit them into the inventory in one batch.
+7. To scan a part barcode or QR label directly when editing an item, click the camera icon next to **Part Number / SKU** in the Add/Edit form.
 
 ---
 

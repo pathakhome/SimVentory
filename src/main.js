@@ -6,10 +6,12 @@ import './style.css';
 import { renderDashboard } from './views/dashboard.js';
 import { renderInventory } from './views/inventory.js';
 import { renderItemForm } from './views/itemForm.js';
+import { renderQueue } from './views/queue.js';
 import { renderSettings } from './views/settings.js';
 import { openItemDetailModal } from './views/itemModal.js';
 import { openScannerModal } from './views/scannerModal.js';
 import { fetchAISettings } from './services/aiService.js';
+import { subscribeQueue, getQueueSummary } from './services/queueService.js';
 
 // ---- State ----
 let currentView = 'dashboard';
@@ -18,8 +20,9 @@ let viewParams = {};
 // ---- DOM References ----
 const mainContent = document.getElementById('main-content');
 const navItems = document.querySelectorAll('.nav-item[data-view]');
-const navScanBtn = document.getElementById('nav-scan');
-const mobileScanBtn = document.getElementById('mobile-scan-btn');
+const mobileQueueBtn = document.getElementById('mobile-queue-btn');
+const navQueueBadge = document.getElementById('nav-queue-badge');
+const mobileQueueBadge = document.getElementById('mobile-queue-badge');
 const sidebar = document.getElementById('sidebar');
 const sidebarOverlay = document.getElementById('sidebar-overlay');
 const mobileMenuBtn = document.getElementById('mobile-menu-btn');
@@ -84,6 +87,9 @@ async function renderCurrentView() {
         prefillPartNumber: viewParams.prefillPartNumber || null,
       });
       break;
+    case 'queue':
+      await renderQueue(mainContent, context);
+      break;
     case 'settings':
       await renderSettings(mainContent, context);
       break;
@@ -99,25 +105,28 @@ navItems.forEach(item => {
   });
 });
 
-// Scanner buttons
-if (navScanBtn) {
-  navScanBtn.addEventListener('click', () => {
-    closeMobileSidebar();
-    openScannerModal({
-      navigateTo,
-      openItemModal: (id) => openItemDetailModal(id, { navigateTo, refreshView: () => renderCurrentView() }),
-    });
+// Mobile Queue button click
+if (mobileQueueBtn) {
+  mobileQueueBtn.addEventListener('click', () => {
+    navigateTo('queue');
   });
 }
 
-if (mobileScanBtn) {
-  mobileScanBtn.addEventListener('click', () => {
-    openScannerModal({
-      navigateTo,
-      openItemModal: (id) => openItemDetailModal(id, { navigateTo, refreshView: () => renderCurrentView() }),
-    });
-  });
+// Queue Badge synchronization
+function updateQueueBadges(summary) {
+  const count = summary.total;
+  if (navQueueBadge) {
+    navQueueBadge.textContent = count;
+    navQueueBadge.style.display = count > 0 ? 'inline-block' : 'none';
+  }
+  if (mobileQueueBadge) {
+    mobileQueueBadge.textContent = count;
+    mobileQueueBadge.style.display = count > 0 ? 'inline-flex' : 'none';
+  }
 }
+
+subscribeQueue((_, summary) => updateQueueBadges(summary));
+updateQueueBadges(getQueueSummary());
 
 // ---- Mobile Sidebar ----
 function openMobileSidebar() {
