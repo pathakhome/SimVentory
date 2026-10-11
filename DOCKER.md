@@ -1,6 +1,6 @@
-# 🐳 Hosting ComponentVault on Docker & Raspberry Pi 4
+# 🐳 Hosting Simventory on Docker & Raspberry Pi 4
 
-ComponentVault is packaged as a multi-architecture Docker container compatible with:
+Simventory is packaged as a multi-architecture Docker container compatible with:
 - **Raspberry Pi 4 (ARM64 / aarch64 & armv7)**
 - **x86 / AMD64 (Linux, Windows, macOS)**
 
@@ -32,13 +32,13 @@ docker compose down
 Copy the project folder to your Raspberry Pi 4 via `scp`, `rsync`, or Git:
 ```bash
 # Example from your PC:
-scp -r f:/Inventory pi@192.168.1.50:~/inventory
+scp -r f:/Inventory pi@192.168.1.50:~/simventory
 ```
 
 ### Step 2: Build and Run on the Pi
 SSH into your Raspberry Pi and run:
 ```bash
-cd ~/inventory
+cd ~/simventory
 docker compose up -d --build
 ```
 Docker will build the multi-stage image natively on the Pi using Alpine Linux (`node:20-alpine`), consuming less than **40 MB of RAM**.
@@ -60,16 +60,16 @@ On your Raspberry Pi or home server, you do **not** need the source code or buil
 
 ### 1. Create a Directory & Compose File on your Raspberry Pi:
 ```bash
-mkdir -p ~/inventory && cd ~/inventory
+mkdir -p ~/simventory && cd ~/simventory
 nano docker-compose.yml
 ```
 
 Paste this configuration (replace `<your-github-username>` with your actual GitHub username):
 ```yaml
 services:
-  componentvault:
-    image: ghcr.io/<your-github-username>/inventory:latest
-    container_name: componentvault
+  simventory:
+    image: ghcr.io/<your-github-username>/simventory:latest
+    container_name: simventory
     restart: unless-stopped
     ports:
       - "8080:3000"
@@ -100,7 +100,7 @@ All your items, photos, and settings stay completely safe in `./data/`.
 
 ## 📱 Mobile Browser Camera & Photo Upload
 
-When accessing ComponentVault from your smartphone browser (Safari on iOS, Chrome / Firefox on Android):
+When accessing Simventory from your smartphone browser (Safari on iOS, Chrome / Firefox on Android):
 
 1. Go to **Add Item** in the navigation bar.
 2. Under the Image section, you have two options:
@@ -120,10 +120,10 @@ In `docker-compose.yml`:
 
 ```yaml
 services:
-  componentvault:
+  simventory:
     build: .
-    image: componentvault:latest
-    container_name: componentvault
+    image: simventory:latest
+    container_name: simventory
     restart: unless-stopped
     ports:
       # Change 8080 to any port you prefer on your host
@@ -148,5 +148,5 @@ All data resides in `./data/`:
 1. **In-App Backup**: Navigate to **Settings** → click **Export JSON** (includes all images as Base64) or **Export CSV** (for spreadsheets).
 2. **File-Level Backup**: Simply back up the `./data` directory on your Raspberry Pi:
    ```bash
-   tar -czvf componentvault-backup-$(date +%F).tar.gz ./data
+   tar -czvf simventory-backup-$(date +%F).tar.gz ./data
    ```

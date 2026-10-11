@@ -230,7 +230,7 @@ export async function renderSettings(container, { refreshView }) {
         <h3>ℹ️ About</h3>
         <div class="settings-row">
           <div class="settings-row-info">
-            <h4>ComponentVault</h4>
+            <h4>Simventory</h4>
             <p>Electronics & DIY Inventory Manager — Dockerized for Raspberry Pi 4 & PC.</p>
           </div>
         </div>
@@ -342,7 +342,7 @@ export async function renderSettings(container, { refreshView }) {
       showToast('Preparing export...', 'info');
       const data = await exportData();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      downloadFile(blob, `component-vault-backup-${formatDateFile()}.json`);
+      downloadFile(blob, `simventory-backup-${formatDateFile()}.json`);
       showToast('Backup exported!', 'success');
     } catch (err) {
       showToast('Export failed: ' + err.message, 'error');
@@ -354,7 +354,7 @@ export async function renderSettings(container, { refreshView }) {
     try {
       const csv = await exportCSV();
       const blob = new Blob([csv], { type: 'text/csv' });
-      downloadFile(blob, `component-vault-${formatDateFile()}.csv`);
+      downloadFile(blob, `simventory-${formatDateFile()}.csv`);
       showToast('CSV exported!', 'success');
     } catch (err) {
       showToast('Export failed: ' + err.message, 'error');

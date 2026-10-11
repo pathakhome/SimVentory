@@ -1,5 +1,5 @@
 /**
- * ComponentVault — Main Application Entry Point
+ * Simventory — Main Application Entry Point
  * Handles routing, navigation, theme, and view orchestration.
  */
 import './style.css';

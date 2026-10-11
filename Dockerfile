@@ -1,5 +1,5 @@
 # ========================================================
-# ComponentVault — Multi-Architecture Dockerfile
+# Simventory — Multi-Architecture Dockerfile
 # Supports linux/amd64 (PC/Servers) and linux/arm64 (Raspberry Pi 4)
 # ========================================================
 

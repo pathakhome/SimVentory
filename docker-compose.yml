@@ -1,10 +1,10 @@
 services:
-  componentvault:
+  simventory:
     build:
       context: .
       dockerfile: Dockerfile
-    image: componentvault:latest
-    container_name: componentvault
+    image: simventory:latest
+    container_name: simventory
     restart: unless-stopped
     ports:
       # Map container port 3000 to port 8080 on your host (change 8080 if needed)
