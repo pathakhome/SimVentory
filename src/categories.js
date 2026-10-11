@@ -53,7 +53,7 @@ export function createDefaultItem() {
     category: 'Other',
     tags: [],
     quantity: 0,
-    lowStockThreshold: 2,
+    lowStockThreshold: 0,
     partNumber: '',
     location: '',
     datasheetUrl: '',

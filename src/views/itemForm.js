@@ -121,7 +121,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <!-- Low Stock Threshold -->
           <div class="form-group">
             <label class="form-label" for="item-threshold">Low Stock Threshold</label>
-            <input type="number" id="item-threshold" min="0" value="${item.lowStockThreshold !== undefined && item.lowStockThreshold !== null ? item.lowStockThreshold : 2}" />
+            <input type="number" id="item-threshold" min="0" value="${item.lowStockThreshold !== undefined && item.lowStockThreshold !== null ? item.lowStockThreshold : 0}" />
           </div>
 
           <!-- Part Number with Scanner Button -->
@@ -564,7 +564,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
     const rawThreshold = document.getElementById('item-threshold').value.trim();
     const parsedThreshold = parseInt(rawThreshold, 10);
-    const lowStockThreshold = isNaN(parsedThreshold) ? 2 : Math.max(0, parsedThreshold);
+    const lowStockThreshold = isNaN(parsedThreshold) ? 0 : Math.max(0, parsedThreshold);
 
     const rawQty = document.getElementById('item-quantity').value.trim();
     const parsedQty = parseInt(rawQty, 10);

@@ -9,7 +9,7 @@ import { optimizeImage } from '../imageUtil.js';
 
 let currentSourceCanvas = null;
 let currentCrop = { x: 0, y: 0, w: 0, h: 0 };
-let currentAspectRatio = 'free'; // 'free' | '1:1' | '4:3'
+let currentAspectRatio = '1:1'; // 'free' | '1:1' | '4:3'
 let activePointer = null;
 
 /**
@@ -20,6 +20,7 @@ let activePointer = null;
  * @param {Function} [options.onCancel] - optional callback if user cancels
  */
 export async function openCropperModal({ image, onDone, onCancel = null }) {
+  currentAspectRatio = '1:1';
   const modal = document.getElementById('item-modal');
   const modalContent = document.getElementById('item-modal-content');
 
@@ -95,8 +96,8 @@ export async function openCropperModal({ image, onDone, onCancel = null }) {
 
         <!-- Aspect Ratio presets -->
         <div style="display:flex; gap:4px; align-items:center; background:var(--bg-secondary, #111827); padding:3px; border-radius:8px; border:1px solid var(--border-secondary, rgba(255,255,255,0.1));">
-          <button type="button" class="crop-ratio-btn active" data-ratio="free" style="padding:4px 10px; font-size:var(--font-size-xs, 12px); border-radius:6px; border:none; background:var(--accent-primary, #6366f1); color:#fff; cursor:pointer;">Free</button>
-          <button type="button" class="crop-ratio-btn" data-ratio="1:1" style="padding:4px 10px; font-size:var(--font-size-xs, 12px); border-radius:6px; border:none; background:transparent; color:var(--text-secondary, #94a3b8); cursor:pointer;">1:1 Square</button>
+          <button type="button" class="crop-ratio-btn" data-ratio="free" style="padding:4px 10px; font-size:var(--font-size-xs, 12px); border-radius:6px; border:none; background:transparent; color:var(--text-secondary, #94a3b8); cursor:pointer;">Free</button>
+          <button type="button" class="crop-ratio-btn active" data-ratio="1:1" style="padding:4px 10px; font-size:var(--font-size-xs, 12px); border-radius:6px; border:none; background:var(--accent-primary, #6366f1); color:#fff; cursor:pointer;">1:1 Square</button>
           <button type="button" class="crop-ratio-btn" data-ratio="4:3" style="padding:4px 10px; font-size:var(--font-size-xs, 12px); border-radius:6px; border:none; background:transparent; color:var(--text-secondary, #94a3b8); cursor:pointer;">4:3</button>
         </div>
       </div>
