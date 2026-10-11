@@ -190,11 +190,16 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           </button>
         </div>
         <div class="item-card-body">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
             <span class="item-card-category" style="background: ${catColor}20; color: ${catColor};">${catIcon} ${item.category}</span>
-            ${item.location ? `<span style="font-size:var(--font-size-xs); color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;" title="${escapeHtml(item.location)}">📍 ${escapeHtml(item.location)}</span>` : ''}
           </div>
           <div class="item-card-name">${escapeHtml(item.name)}</div>
+          ${item.location ? `
+            <div class="item-card-location" title="${escapeHtml(item.location)}">
+              <span class="location-pin">📍</span>
+              <span class="location-name">${escapeHtml(item.location)}</span>
+            </div>
+          ` : ''}
           <div class="item-card-desc">${escapeHtml(item.description || 'No description')}</div>
           <div class="item-card-footer">
             <div class="item-qty">
@@ -222,7 +227,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
         ${imgSrc ? `<img class="item-list-img" src="${imgSrc}" alt="${escapeHtml(item.name)}"/>` : `<div class="item-list-img" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>`}
         <span class="item-list-name">${escapeHtml(item.name)}</span>
         <span class="item-list-category" style="color: ${catColor};">${catIcon} ${item.category}</span>
-        <span class="item-list-location">${escapeHtml(item.location || '—')}</span>
+        <span class="item-list-location" style="font-size:var(--font-size-base); font-weight:700; color:var(--text-primary);">${item.location ? `📍 ${escapeHtml(item.location)}` : '<span style="color:var(--text-tertiary);font-weight:normal;">—</span>'}</span>
         <span class="item-list-qty item-qty-value ${qtyClass}">${item.quantity}</span>
         <span class="item-list-fav ${item.isFavorite ? 'active' : ''}" data-fav-id="${item.id}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="${item.isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>

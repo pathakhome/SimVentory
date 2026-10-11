@@ -6,6 +6,7 @@ import { createDefaultItem } from '../categories.js';
 import { showToast } from '../toast.js';
 import { optimizeImage } from '../imageUtil.js';
 import { openCameraModal } from './cameraModal.js';
+import { openCropperModal } from './cropperModal.js';
 
 /**
  * Render the add/edit item form.
@@ -62,9 +63,15 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
               ${existingImageUrl ? `
                 <div class="image-preview-container">
                   <img class="image-preview" src="${existingImageUrl}" alt="Preview" id="image-preview" />
-                  <button type="button" class="image-remove-btn" id="image-remove-btn" title="Remove image">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
+                  <div class="image-preview-actions">
+                    <button type="button" class="image-crop-btn" id="image-crop-btn" title="Crop image">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+                      Crop
+                    </button>
+                    <button type="button" class="image-remove-btn" id="image-remove-btn" title="Remove image">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
                 </div>
               ` : `
                 <div class="upload-placeholder" id="upload-placeholder">
@@ -163,17 +170,26 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
           <!-- Tags -->
           <div class="form-group full-width">
-            <label class="form-label">Tags <span style="font-weight:400; color: var(--text-tertiary);">— Type, pick from suggestions, or press Enter/comma</span></label>
-            <div class="tag-input-container" id="tag-container">
-              ${(item.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}<button type="button">&times;</button></span>`).join('')}
-              <input type="text" class="tag-input" id="tag-input" list="existing-tags-datalist" placeholder="Add tag..." autocomplete="off" />
-              <datalist id="existing-tags-datalist">
-                ${allUniqueTags.map(t => `<option value="${escapeAttr(t)}"></option>`).join('')}
-              </datalist>
+            <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Tags</span>
+              <span style="font-weight:400; font-size:var(--font-size-xs); color:var(--text-tertiary);">Type & tap + Add, or select suggestions</span>
+            </label>
+            <div style="display:flex; gap:8px; align-items:stretch;">
+              <div class="tag-input-container" id="tag-container" style="flex:1;">
+                ${(item.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}<button type="button">&times;</button></span>`).join('')}
+                <input type="text" class="tag-input" id="tag-input" list="existing-tags-datalist" placeholder="Add tag (e.g. smd, 3.3v, i2c)..." autocomplete="off" enterkeyhint="done" />
+                <datalist id="existing-tags-datalist">
+                  ${allUniqueTags.map(t => `<option value="${escapeAttr(t)}"></option>`).join('')}
+                </datalist>
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-add-tag-manual" style="padding:0 16px; font-weight:600; font-size:var(--font-size-sm); display:inline-flex; align-items:center; gap:4px; flex-shrink:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add
+              </button>
             </div>
             <div class="existing-tags-wrapper" id="existing-tags-wrapper" style="margin-top: 8px;">
               <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 6px;">
-                Existing tags in your vault (click to add):
+                Existing tags in your vault (tap to add):
               </div>
               <div class="existing-tags-cloud" id="existing-tags-cloud" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
             </div>
@@ -264,31 +280,64 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   });
 
   async function handleImageFile(file) {
+    if (!file) return;
+    // Automatically open interactive cropper modal so user can frame component
+    openCropperModal({
+      image: file,
+      onDone: async (croppedBlob) => {
+        await applyCroppedImage(croppedBlob);
+      },
+    });
+  }
+
+  async function applyCroppedImage(blob) {
     try {
-      showToast('Processing photo...', 'info');
-      // Automatically resize & compress high-res mobile camera photos
-      const optimized = await optimizeImage(file);
+      showToast('Optimizing photo...', 'info');
+      const optimized = await optimizeImage(blob);
       imageFile = optimized;
       removeImage = false;
 
       const url = URL.createObjectURL(optimized);
+      existingImageUrl = url;
       uploadArea.classList.add('has-image');
       uploadArea.innerHTML = `
         <div class="image-preview-container">
           <img class="image-preview" src="${url}" alt="Preview" id="image-preview" />
-          <button type="button" class="image-remove-btn" id="image-remove-btn" title="Remove image">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div class="image-preview-actions">
+            <button type="button" class="image-crop-btn" id="image-crop-btn" title="Crop / reframe image">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+              Crop
+            </button>
+            <button type="button" class="image-remove-btn" id="image-remove-btn" title="Remove image">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
       `;
-      showToast('Photo attached!', 'success');
+      showToast('Photo framed and attached!', 'success');
     } catch (err) {
       showToast('Failed to process image: ' + err.message, 'error');
     }
   }
 
-  // Image remove button (event delegation)
+  // Image actions (Crop & Remove buttons via event delegation)
   uploadArea.addEventListener('click', (e) => {
+    // 1. Re-crop existing image
+    if (e.target.closest('.image-crop-btn')) {
+      e.stopPropagation();
+      const targetImage = imageFile || existingImageUrl;
+      if (targetImage) {
+        openCropperModal({
+          image: targetImage,
+          onDone: async (croppedBlob) => {
+            await applyCroppedImage(croppedBlob);
+          },
+        });
+      }
+      return;
+    }
+
+    // 2. Remove image
     if (e.target.closest('.image-remove-btn')) {
       e.stopPropagation();
       imageFile = null;
@@ -367,12 +416,32 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     }
   });
 
-  tagInput.addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ',') && tagInput.value.trim()) {
-      e.preventDefault();
-      addTag(tagInput.value.trim().replace(',', ''));
+  function commitInputTag() {
+    if (!tagInput) return;
+    const val = tagInput.value.trim().replace(/^,+|,+$/g, '');
+    if (val) {
+      // Split by comma if user typed or pasted multiple tags
+      const parts = val.split(',').map(s => s.trim()).filter(Boolean);
+      parts.forEach(p => addTag(p));
       tagInput.value = '';
       renderExistingTagsCloud();
+    }
+  }
+
+  // Manual "+ Add" button (Essential for mobile browsers)
+  const btnAddTagManual = document.getElementById('btn-add-tag-manual');
+  if (btnAddTagManual) {
+    btnAddTagManual.addEventListener('click', (e) => {
+      e.preventDefault();
+      commitInputTag();
+      tagInput.focus();
+    });
+  }
+
+  tagInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.keyCode === 13 || e.key === ',') {
+      e.preventDefault();
+      commitInputTag();
     }
     if (e.key === 'Backspace' && !tagInput.value && tags.length > 0) {
       const removed = tags.pop();
@@ -382,14 +451,21 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     }
   });
 
+  // Handle typing comma on mobile keyboards
+  tagInput.addEventListener('input', () => {
+    if (tagInput.value.includes(',')) {
+      commitInputTag();
+    }
+  });
+
+  // Handle mobile blur (when tapping away to another field)
+  tagInput.addEventListener('blur', () => {
+    commitInputTag();
+  });
+
   // Handle selecting from browser datalist autocomplete
   tagInput.addEventListener('change', () => {
-    const val = tagInput.value.trim();
-    if (val && allUniqueTags.includes(val)) {
-      addTag(val);
-      tagInput.value = '';
-      renderExistingTagsCloud();
-    }
+    commitInputTag();
   });
 
   function addTag(tag) {
@@ -465,6 +541,9 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   // ---- Form Submit ----
   document.getElementById('item-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    // Auto-commit any tag typed into the input before saving
+    commitInputTag();
 
     const name = document.getElementById('item-name').value.trim();
     if (!name) {
