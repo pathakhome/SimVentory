@@ -1,5 +1,5 @@
 /**
- * Simventory — Main Application Entry Point
+ * SimVentory — Main Application Entry Point
  * Handles routing, navigation, theme, and view orchestration.
  */
 import './style.css';

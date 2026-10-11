@@ -1,6 +1,6 @@
-# 🐳 Hosting Simventory on Docker & Raspberry Pi 4
+# 🐳 Hosting SimVentory on Docker & Raspberry Pi 4
 
-Simventory is packaged as a multi-architecture Docker container compatible with:
+SimVentory is packaged as a multi-architecture Docker container compatible with:
 - **Raspberry Pi 4 (ARM64 / aarch64 & armv7)**
 - **x86 / AMD64 (Linux, Windows, macOS)**
 
@@ -100,7 +100,7 @@ All your items, photos, and settings stay completely safe in `./data/`.
 
 ## 📱 Mobile Browser Camera & Photo Upload
 
-When accessing Simventory from your smartphone browser (Safari on iOS, Chrome / Firefox on Android):
+When accessing SimVentory from your smartphone browser (Safari on iOS, Chrome / Firefox on Android):
 
 1. Go to **Add Item** in the navigation bar.
 2. Under the Image section, you have two options:

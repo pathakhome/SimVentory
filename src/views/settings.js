@@ -230,7 +230,7 @@ export async function renderSettings(container, { refreshView }) {
         <h3>ℹ️ About</h3>
         <div class="settings-row">
           <div class="settings-row-info">
-            <h4>Simventory</h4>
+            <h4>SimVentory</h4>
             <p>Electronics & DIY Inventory Manager — Dockerized for Raspberry Pi 4 & PC.</p>
           </div>
         </div>

@@ -1,5 +1,5 @@
 # ========================================================
-# Simventory — Multi-Architecture Dockerfile
+# SimVentory — Multi-Architecture Dockerfile
 # Supports linux/amd64 (PC/Servers) and linux/arm64 (Raspberry Pi 4)
 # ========================================================
 

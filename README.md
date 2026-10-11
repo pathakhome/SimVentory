@@ -1,4 +1,4 @@
-# ⚡ Simventory
+# ⚡ SimVentory
 
 > **Electronics & DIY Hobbyist Component Inventory Manager**  
 > Tailored for Raspberry Pi 4 (ARM64) and desktop/server hosting via Docker. Fast, lightweight, offline-resilient, and mobile-friendly with built-in camera scanning.
@@ -27,7 +27,7 @@ cd simventory
 docker compose up -d --build
 ```
 
-### 2. Access Simventory
+### 2. Access SimVentory
 Open your browser and navigate to:
 ```
 http://localhost:8080
@@ -60,7 +60,7 @@ node server.js
 
 1. Tap **Scan Code** in the top navigation or on the dashboard.
 2. Point your camera at any 1D barcode or 2D QR code on a component bag or label.
-3. **If recognized**: Simventory shows component details with quick `-1 Use` and `+1 Restock` buttons.
+3. **If recognized**: SimVentory shows component details with quick `-1 Use` and `+1 Restock` buttons.
 4. **If new**: Click **"+ Add Component with this SKU"** to open the creation form with the part number automatically filled in.
 5. In the Add/Edit form, you can also click the **"Scan Barcode"** button next to Part Number / SKU at any time.
 

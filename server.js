@@ -1,5 +1,5 @@
 /**
- * Simventory — Production Server & API Backend
+ * SimVentory — Production Server & API Backend
  * Lightweight, zero-native-compilation Node.js backend.
  * Perfect for Raspberry Pi 4 (ARM64) and standard x86/AMD64 Docker containers.
  */
@@ -48,9 +48,9 @@ function loadDatabase() {
         db.categories = [...DEFAULT_CATEGORIES];
       }
       if (!Array.isArray(db.locations)) db.locations = [];
-      console.log(`[Simventory] Loaded ${db.items.length} items, ${db.categories.length} categories, ${db.locations.length} locations.`);
+      console.log(`[SimVentory] Loaded ${db.items.length} items, ${db.categories.length} categories, ${db.locations.length} locations.`);
     } catch (err) {
-      console.error('[Simventory] Error reading database file:', err.message);
+      console.error('[SimVentory] Error reading database file:', err.message);
     }
   } else {
     saveDatabase();
@@ -412,7 +412,7 @@ function deleteImageFile(id) {
 // Serve static frontend files from 'dist' in production
 const distPath = path.join(__dirname, 'dist');
 if (fs.existsSync(distPath)) {
-  console.log(`[Simventory] Serving static production files from: ${distPath}`);
+  console.log(`[SimVentory] Serving static production files from: ${distPath}`);
   app.use(express.static(distPath));
 
   // SPA fallback for non-API routes in Express 5
@@ -426,7 +426,7 @@ if (fs.existsSync(distPath)) {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`===============================================`);
-  console.log(`  ⚡ Simventory Server Running`);
+  console.log(`  ⚡ SimVentory Server Running`);
   console.log(`  📍 Local:   http://localhost:${PORT}`);
   console.log(`  🌐 Network: http://0.0.0.0:${PORT}`);
   console.log(`  💾 Storage: ${DATA_DIR}`);
