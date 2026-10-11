@@ -126,13 +126,56 @@ export const STATIC_JSON_SCHEMA = {
 
 export const DEFAULT_AI_SETTINGS = {
   enabled: true,
-  provider: 'openrouter',
-  endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  provider: 'gemini',
+  endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
   apiKey: '',
-  model: 'google/gemini-2.0-flash-001',
+  model: 'gemini-2.0-flash',
   useServerProxy: false,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  // Primary model rate limit (Requests Per Minute, 0 = unlimited)
+  primaryRpmLimit: 15,
+  // Backup / Fallback model configuration
+  backupEnabled: true,
+  backupProvider: 'gemini',
+  backupEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+  backupApiKey: '',
+  backupModel: 'gemini-1.5-flash',
+  backupUseServerProxy: false,
 };
+
+// In-memory sliding window request timestamps for primary model rate limit
+const primaryRequestTimestamps = [];
+
+/**
+ * Check if the primary model has reached its configured RPM limit.
+ * @param {number} rpmLimit 
+ * @returns {{ currentCount: number, rpmLimit: number, isLimitReached: boolean, availableInSeconds: number }}
+ */
+export function getPrimaryRpmStatus(rpmLimit = 15) {
+  const now = Date.now();
+  while (primaryRequestTimestamps.length > 0 && now - primaryRequestTimestamps[0] > 60000) {
+    primaryRequestTimestamps.shift();
+  }
+  const currentCount = primaryRequestTimestamps.length;
+  const limit = parseInt(rpmLimit, 10) || 0;
+  const isLimitReached = limit > 0 && currentCount >= limit;
+  const oldestAge = primaryRequestTimestamps[0] ? now - primaryRequestTimestamps[0] : 0;
+  const availableInSeconds = isLimitReached ? Math.max(1, Math.ceil((60000 - oldestAge) / 1000)) : 0;
+  return {
+    currentCount,
+    rpmLimit: limit,
+    isLimitReached,
+    availableInSeconds,
+  };
+}
+
+function recordPrimaryRequest() {
+  const now = Date.now();
+  while (primaryRequestTimestamps.length > 0 && now - primaryRequestTimestamps[0] > 60000) {
+    primaryRequestTimestamps.shift();
+  }
+  primaryRequestTimestamps.push(now);
+}
 
 /**
  * Retrieve saved AI settings from localStorage with fallback to defaults.
@@ -362,52 +405,23 @@ export async function testAIConnection(customSettings = null) {
 }
 
 /**
- * Extract electronics component details from an image.
- * @param {Object} options
- * @param {Blob|File|string} options.image - Component photo blob or base64 data URL
- * @param {Array<string>} [options.categories] - List of current category names
- * @param {Object} [options.existingItem] - Existing item data if editing
- * @returns {Promise<Object>} Extracted item details
+ * Internal helper to dispatch a vision inference request to a specific model configuration.
  */
-export async function analyzeComponentImage({ image, categories = [], existingItem = null }) {
-  await fetchAISettings().catch(() => {});
-  const settings = getAISettings();
-  if (!settings.enabled) {
-    throw new Error('AI recognition is disabled in Settings.');
-  }
-
-  const { provider, endpoint, apiKey, model, useServerProxy } = settings;
+async function executeVisionRequest(config, base64Full, categories = []) {
+  const { provider, endpoint, apiKey, model, useServerProxy, systemPrompt } = config;
   const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom;
 
   if (preset.requiresKey && !apiKey) {
-    throw new Error(`API Key for ${preset.name} is missing. Please configure it in Settings.`);
+    throw new Error(`API Key for ${preset.name} is missing.`);
   }
 
-  // Convert image to base64 (supports Blob, data URL, blob: URL, or fetchable image URL)
-  let base64Full = '';
-  if (image instanceof Blob) {
-    base64Full = await blobToBase64(image);
-  } else if (typeof image === 'string') {
-    if (image.startsWith('data:')) {
-      base64Full = image;
-    } else {
-      // It's a blob: or http: or /api/ URL — fetch it into a blob first
-      const res = await fetch(image);
-      const fetchedBlob = await res.blob();
-      base64Full = await blobToBase64(fetchedBlob);
-    }
-  } else {
-    throw new Error('Unsupported image format provided for AI recognition.');
-  }
-
-  // Split data URL into mimeType and raw base64 data
   const matches = base64Full.match(/^data:([^;]+);base64,(.+)$/);
   const mimeType = matches ? matches[1] : 'image/jpeg';
   const base64Data = matches ? matches[2] : base64Full;
 
   const categoryListStr = categories.length > 0 ? categories.join(', ') : 'Sensors, ICs, Resistors, Capacitors, LEDs, Connectors, Switches, Motors, Modules, Other';
 
-  const promptTemplate = (settings.systemPrompt && settings.systemPrompt.trim()) ? settings.systemPrompt : DEFAULT_SYSTEM_PROMPT;
+  const promptTemplate = (systemPrompt && systemPrompt.trim()) ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
   const systemInstructions = promptTemplate.includes('{CATEGORIES}')
     ? promptTemplate.replace('{CATEGORIES}', categoryListStr)
     : `${promptTemplate}\n\nAvailable categories in SimVentory: [${categoryListStr}]. Choose the closest matching category.`;
@@ -416,7 +430,7 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
 
   // 1. Google Gemini Native
   if (provider === 'gemini') {
-    const cleanEndpoint = endpoint.replace(/\/+$/, '');
+    const cleanEndpoint = (endpoint || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
     const url = `${cleanEndpoint}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const payload = {
       contents: [
@@ -499,7 +513,6 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
   // Parse and sanitize JSON
   const parsed = parseAIResponseJSON(rawResponseText);
 
-  // Validate and structure fields
   return {
     name: (parsed.name || '').trim(),
     partNumber: (parsed.partNumber || '').trim(),
@@ -512,6 +525,112 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
     modelUsed: model,
     providerUsed: provider,
   };
+}
+
+/**
+ * Extract electronics component details from an image.
+ * Evaluates Primary model RPM rate limit, auto-switching to backup model if limit reached,
+ * and automatically fails over to the backup model in case of any runtime errors.
+ * @param {Object} options
+ * @param {Blob|File|string} options.image - Component photo blob or base64 data URL
+ * @param {Array<string>} [options.categories] - List of current category names
+ * @param {Object} [options.existingItem] - Existing item data if editing
+ * @returns {Promise<Object>} Extracted item details
+ */
+export async function analyzeComponentImage({ image, categories = [], existingItem = null }) {
+  await fetchAISettings().catch(() => {});
+  const settings = getAISettings();
+  if (!settings.enabled) {
+    throw new Error('AI recognition is disabled in Settings.');
+  }
+
+  // Convert image to base64 (supports Blob, data URL, blob: URL, or fetchable image URL)
+  let base64Full = '';
+  if (image instanceof Blob) {
+    base64Full = await blobToBase64(image);
+  } else if (typeof image === 'string') {
+    if (image.startsWith('data:')) {
+      base64Full = image;
+    } else {
+      const res = await fetch(image);
+      const fetchedBlob = await res.blob();
+      base64Full = await blobToBase64(fetchedBlob);
+    }
+  } else {
+    throw new Error('Unsupported image format provided for AI recognition.');
+  }
+
+  const primaryConfig = {
+    provider: settings.provider,
+    endpoint: settings.endpoint,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    useServerProxy: settings.useServerProxy,
+    systemPrompt: settings.systemPrompt,
+  };
+
+  const backupProvider = settings.backupProvider || settings.provider;
+  const backupPreset = PROVIDER_PRESETS[backupProvider] || PROVIDER_PRESETS.custom;
+  const backupEndpoint = (settings.backupEndpoint && settings.backupEndpoint.trim())
+    ? settings.backupEndpoint.trim()
+    : (backupPreset.endpoint || settings.endpoint);
+  const backupApiKey = (settings.backupApiKey && settings.backupApiKey.trim())
+    ? settings.backupApiKey.trim()
+    : (backupProvider === settings.provider ? settings.apiKey : '');
+
+  const backupConfig = {
+    provider: backupProvider,
+    endpoint: backupEndpoint,
+    apiKey: backupApiKey,
+    model: settings.backupModel,
+    useServerProxy: settings.backupUseServerProxy !== undefined ? settings.backupUseServerProxy : settings.useServerProxy,
+    systemPrompt: settings.systemPrompt,
+  };
+
+  const hasBackup = settings.backupEnabled && Boolean(settings.backupModel && settings.backupModel.trim());
+  const rpmStatus = getPrimaryRpmStatus(settings.primaryRpmLimit);
+
+  // 1. Proactive Rate Limit Switching:
+  // If primary model has hit its RPM threshold, switch directly to the backup model!
+  if (hasBackup && rpmStatus.isLimitReached) {
+    console.warn(`[AI Service] Primary model rate limit (${rpmStatus.rpmLimit} req/min) reached. Auto-switching to backup model (${backupConfig.model}). Resets in ${rpmStatus.availableInSeconds}s.`);
+    try {
+      const backupResult = await executeVisionRequest(backupConfig, base64Full, categories);
+      backupResult.switchedToBackup = true;
+      backupResult.backupReason = `Primary model rate limit (${rpmStatus.rpmLimit} req/min) reached. Auto-switched to backup model.`;
+      backupResult.modelUsed = `${backupConfig.model} (Backup: Rate limit)`;
+      return backupResult;
+    } catch (backupErr) {
+      console.error('[AI Service] Backup model also failed after rate limit switch:', backupErr);
+      throw new Error(`Primary reached ${rpmStatus.rpmLimit} req/min limit. Backup model failed: ${backupErr.message}`);
+    }
+  }
+
+  // 2. Try Primary Model
+  try {
+    recordPrimaryRequest();
+    const result = await executeVisionRequest(primaryConfig, base64Full, categories);
+    result.switchedToBackup = false;
+    return result;
+  } catch (primaryErr) {
+    // 3. Reactive Failover on Error:
+    // If primary model fails with 429 quota exhaustion, 5xx server error, timeout, or malformed reply:
+    if (hasBackup) {
+      console.warn(`[AI Service] Primary model (${primaryConfig.model}) failed: ${primaryErr.message}. Invoking backup model (${backupConfig.model})...`);
+      try {
+        const backupResult = await executeVisionRequest(backupConfig, base64Full, categories);
+        backupResult.switchedToBackup = true;
+        backupResult.backupReason = `Primary model failed (${primaryErr.message}). Automatically switched to backup model.`;
+        backupResult.modelUsed = `${backupConfig.model} (Backup: Failover)`;
+        return backupResult;
+      } catch (backupErr) {
+        console.error('[AI Service] Backup model also failed during failover:', backupErr);
+        throw new Error(`Primary failed (${primaryErr.message}). Backup model failed: ${backupErr.message}`);
+      }
+    }
+
+    throw primaryErr;
+  }
 }
 
 /**

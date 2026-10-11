@@ -55,9 +55,15 @@ export function openAIReviewModal({
           <div>
             <h2 class="modal-title" style="font-size: var(--font-size-lg); margin: 0; display: flex; align-items: center; gap: 8px;">
               AI Component Details
-              <span class="ai-model-pill" style="font-size: 11px; font-weight: 500; background: var(--bg-tertiary); color: var(--accent-primary-hover); border: 1px solid var(--border-secondary); padding: 2px 8px; border-radius: 99px;">
-                ${escapeHtml(aiData.modelUsed || 'AI Vision')}
-              </span>
+              ${aiData.switchedToBackup ? `
+                <span class="ai-model-pill" style="font-size: 11px; font-weight: 600; background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.4); padding: 2px 8px; border-radius: 99px;" title="${escapeAttr(aiData.backupReason || 'Switched to backup model')}">
+                  🛡️ ${escapeHtml(aiData.modelUsed || 'Backup Model')}
+                </span>
+              ` : `
+                <span class="ai-model-pill" style="font-size: 11px; font-weight: 500; background: var(--bg-tertiary); color: var(--accent-primary-hover); border: 1px solid var(--border-secondary); padding: 2px 8px; border-radius: 99px;">
+                  ${escapeHtml(aiData.modelUsed || 'AI Vision')}
+                </span>
+              `}
             </h2>
             <div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: 2px;">
               Review detected values below. Uncheck or edit any field before applying.
@@ -71,6 +77,13 @@ export function openAIReviewModal({
 
       <!-- Modal Body -->
       <div class="modal-body" style="padding: 16px 20px; overflow-y: auto; flex: 1;">
+        ${aiData.switchedToBackup ? `
+          <div style="background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 11.5px; color: #facc15; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px;">⚡</span>
+            <span><strong>Switched to Backup Model:</strong> ${escapeHtml(aiData.backupReason || 'Primary rate limit or failover')}</span>
+          </div>
+        ` : ''}
+
         <!-- Top Toolbar & Preview -->
         <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 16px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 10px 14px; flex-wrap: wrap;">
           ${imageSrc ? `

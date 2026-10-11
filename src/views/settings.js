@@ -244,12 +244,102 @@ export async function renderSettings(container, { refreshView }) {
               </div>
             </div>
 
+            <!-- Primary Model Rate Limit (RPM) -->
+            <div style="margin-top: 6px; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 6px; padding: 10px 12px;">
+              <label class="form-label" for="ai-primary-rpm-input" style="font-size:var(--font-size-xs); display:flex; justify-content:space-between; margin-bottom: 4px;">
+                <span><strong>Primary Model Rate Limit (Requests / Minute)</strong></span>
+                <span style="font-size:11px; color:var(--text-tertiary);">0 = Disabled</span>
+              </label>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <input type="number" id="ai-primary-rpm-input" min="0" max="300" value="${aiSettings.primaryRpmLimit !== undefined ? aiSettings.primaryRpmLimit : 15}" style="width: 100px; font-weight:700; font-size:var(--font-size-sm);" />
+                <span style="font-size:11px; color:var(--text-secondary);">
+                  e.g. <strong>15 RPM</strong> for Gemini free tier. When limit is reached, requests automatically switch to the Backup Model.
+                </span>
+              </div>
+            </div>
+
             <!-- Server Proxy CORS bypass -->
             <div style="display:flex; align-items:flex-start; gap:8px; margin-top:2px;">
               <input type="checkbox" id="ai-server-proxy-check" ${aiSettings.useServerProxy ? 'checked' : ''} style="margin-top:3px; accent-color:var(--accent-primary);" />
               <label for="ai-server-proxy-check" style="font-size:var(--font-size-xs); color:var(--text-secondary); cursor:pointer;">
                 <strong>Route requests via SimVentory server</strong> (Bypasses browser CORS errors for local Ollama, LM Studio, or homelab machines).
               </label>
+            </div>
+
+            <!-- Backup / Fallback Model Card -->
+            <div style="border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 14px; background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(168,85,247,0.05)); margin-top: 6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <span style="font-size: var(--font-size-sm); font-weight: 700; color: var(--text-primary); display:flex; align-items:center; gap:6px;">
+                    <span>🛡️</span> Backup / Fallback AI Model
+                  </span>
+                  <p style="font-size: 11px; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    Invoked automatically when primary RPM threshold is reached, on 429 quota exhaustion, or if the primary model fails.
+                  </p>
+                </div>
+                <label style="position:relative; display:inline-block; width:44px; height:24px; cursor:pointer; flex-shrink:0;">
+                  <input type="checkbox" id="ai-backup-enabled-toggle" ${aiSettings.backupEnabled !== false ? 'checked' : ''} style="opacity:0; width:0; height:0;" />
+                  <span id="ai-backup-track" style="position:absolute; inset:0; background:${aiSettings.backupEnabled !== false ? 'var(--accent-primary)' : 'var(--bg-tertiary)'}; border-radius:24px; transition:background 0.25s ease; border:1px solid var(--border-secondary);">
+                    <span id="ai-backup-thumb" style="position:absolute; top:2px; left:${aiSettings.backupEnabled !== false ? '22px' : '2px'}; width:18px; height:18px; background:#fff; border-radius:50%; transition:left 0.25s ease;"></span>
+                  </span>
+                </label>
+              </div>
+
+              <div id="ai-backup-fields-container" style="display: ${aiSettings.backupEnabled !== false ? 'flex' : 'none'}; flex-direction: column; gap: 12px; border-top: 1px dashed var(--border-secondary); padding-top: 12px; margin-top: 12px;">
+                <!-- Backup Provider -->
+                <div>
+                  <label class="form-label" style="font-size:var(--font-size-xs);">Backup Provider</label>
+                  <select id="ai-backup-provider-select" style="width:100%;">
+                    ${Object.values(PROVIDER_PRESETS).map(p => `
+                      <option value="${p.id}" ${(aiSettings.backupProvider || 'gemini') === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>
+                    `).join('')}
+                  </select>
+                </div>
+
+                <!-- Backup Model Name -->
+                <div>
+                  <label class="form-label" style="font-size:var(--font-size-xs);">Backup Model Name</label>
+                  <input type="text" id="ai-backup-model-input" value="${escapeAttr(aiSettings.backupModel || 'gemini-1.5-flash')}" placeholder="e.g. gemini-1.5-flash" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+                  
+                  <div id="ai-backup-suggested-models" style="display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+                    <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
+                    ${((PROVIDER_PRESETS[aiSettings.backupProvider || 'gemini'] || PROVIDER_PRESETS.gemini).suggestedModels || []).map(m => `
+                      <button type="button" class="btn-preset-backup-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
+                    `).join('')}
+                  </div>
+                </div>
+
+                <!-- Backup Endpoint -->
+                <div>
+                  <label class="form-label" style="font-size:var(--font-size-xs);">Backup Endpoint URL</label>
+                  <input type="url" id="ai-backup-endpoint-input" value="${escapeAttr(aiSettings.backupEndpoint || (PROVIDER_PRESETS[aiSettings.backupProvider || 'gemini']?.endpoint || ''))}" placeholder="https://..." style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+                </div>
+
+                <!-- Backup API Key (Optional) -->
+                <div>
+                  <label class="form-label" style="font-size:var(--font-size-xs); display:flex; justify-content:space-between;">
+                    <span>Backup API Key (Optional)</span>
+                    <span style="font-size:11px; color:var(--text-tertiary);">Leave empty to reuse primary key</span>
+                  </label>
+                  <input type="password" id="ai-backup-apikey-input" value="${escapeAttr(aiSettings.backupApiKey || '')}" placeholder="Reuses primary key if empty" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+                </div>
+
+                <!-- Backup Server Proxy Toggle -->
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" id="ai-backup-proxy-check" ${aiSettings.backupUseServerProxy ? 'checked' : ''} style="accent-color:var(--accent-primary);" />
+                  <label for="ai-backup-proxy-check" style="font-size:var(--font-size-xs); color:var(--text-secondary); cursor:pointer;">
+                    Route backup requests via SimVentory server proxy (for local Ollama/LM Studio)
+                  </label>
+                </div>
+
+                <!-- Test Backup Button -->
+                <div style="display:flex; justify-content:flex-end;">
+                  <button type="button" class="btn btn-secondary btn-sm" id="ai-test-backup-btn" style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    Test Backup Model
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- Customizable Prompt & Static Schema -->
@@ -539,6 +629,95 @@ export async function renderSettings(container, { refreshView }) {
     });
   }
 
+  // Primary Model Rate Limit Input
+  const primaryRpmInput = document.getElementById('ai-primary-rpm-input');
+
+  // Backup Model References & Listeners
+  const backupToggle = document.getElementById('ai-backup-enabled-toggle');
+  const backupTrack = document.getElementById('ai-backup-track');
+  const backupThumb = document.getElementById('ai-backup-thumb');
+  const backupFieldsContainer = document.getElementById('ai-backup-fields-container');
+  const backupProviderSelect = document.getElementById('ai-backup-provider-select');
+  const backupModelInput = document.getElementById('ai-backup-model-input');
+  const backupEndpointInput = document.getElementById('ai-backup-endpoint-input');
+  const backupApiKeyInput = document.getElementById('ai-backup-apikey-input');
+  const backupProxyCheck = document.getElementById('ai-backup-proxy-check');
+  const backupSuggestedContainer = document.getElementById('ai-backup-suggested-models');
+  const testBackupBtn = document.getElementById('ai-test-backup-btn');
+
+  function bindBackupModelChips() {
+    container.querySelectorAll('.btn-preset-backup-model').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (backupModelInput) backupModelInput.value = btn.dataset.model;
+      });
+    });
+  }
+  bindBackupModelChips();
+
+  if (backupToggle && backupTrack && backupThumb && backupFieldsContainer) {
+    backupToggle.addEventListener('change', () => {
+      const isBackupOn = backupToggle.checked;
+      backupTrack.style.backgroundColor = isBackupOn ? 'var(--accent-primary)' : 'var(--bg-tertiary)';
+      backupThumb.style.left = isBackupOn ? '22px' : '2px';
+      backupFieldsContainer.style.display = isBackupOn ? 'flex' : 'none';
+    });
+  }
+
+  if (backupProviderSelect) {
+    backupProviderSelect.addEventListener('change', () => {
+      const selectedId = backupProviderSelect.value;
+      const preset = PROVIDER_PRESETS[selectedId] || PROVIDER_PRESETS.custom;
+
+      if (preset.endpoint && backupEndpointInput) backupEndpointInput.value = preset.endpoint;
+      if (preset.defaultModel && backupModelInput) backupModelInput.value = preset.defaultModel;
+
+      if (backupSuggestedContainer) {
+        backupSuggestedContainer.innerHTML = `
+          <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
+          ${(preset.suggestedModels || []).map(m => `
+            <button type="button" class="btn-preset-backup-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
+          `).join('')}
+        `;
+        bindBackupModelChips();
+      }
+    });
+  }
+
+  // Test Backup Model Connection
+  if (testBackupBtn) {
+    testBackupBtn.addEventListener('click', async () => {
+      const backupProvider = backupProviderSelect ? backupProviderSelect.value : 'gemini';
+      const backupConfig = {
+        enabled: true,
+        provider: backupProvider,
+        endpoint: backupEndpointInput ? backupEndpointInput.value.trim() : '',
+        apiKey: (backupApiKeyInput && backupApiKeyInput.value.trim()) ? backupApiKeyInput.value.trim() : apiKeyInput.value.trim(),
+        model: backupModelInput ? backupModelInput.value.trim() : 'gemini-1.5-flash',
+        useServerProxy: backupProxyCheck ? backupProxyCheck.checked : false,
+      };
+
+      testBackupBtn.disabled = true;
+      testBackupBtn.innerHTML = `
+        <svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        Testing Backup...
+      `;
+
+      try {
+        const result = await testAIConnection(backupConfig);
+        showToast('🛡️ Backup model: ' + result.message, 'success');
+      } catch (err) {
+        console.error('Backup test error:', err);
+        showToast('Backup model failed: ' + err.message, 'error');
+      } finally {
+        testBackupBtn.disabled = false;
+        testBackupBtn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Test Backup Model
+        `;
+      }
+    });
+  }
+
   // API Key Visibility Toggle
   const toggleKeyBtn = document.getElementById('btn-toggle-apikey-visibility');
   if (toggleKeyBtn && apiKeyInput) {
@@ -553,7 +732,7 @@ export async function renderSettings(container, { refreshView }) {
     });
   }
 
-  // Test Connection
+  // Test Primary Connection
   const testBtn = document.getElementById('ai-test-btn');
   if (testBtn) {
     testBtn.addEventListener('click', async () => {
@@ -610,11 +789,18 @@ export async function renderSettings(container, { refreshView }) {
         apiKey: apiKeyInput.value.trim(),
         model: modelInput.value.trim(),
         useServerProxy: proxyCheck ? proxyCheck.checked : false,
+        primaryRpmLimit: primaryRpmInput ? parseInt(primaryRpmInput.value, 10) || 0 : 15,
+        backupEnabled: backupToggle ? backupToggle.checked : true,
+        backupProvider: backupProviderSelect ? backupProviderSelect.value : 'gemini',
+        backupEndpoint: backupEndpointInput ? backupEndpointInput.value.trim() : '',
+        backupApiKey: backupApiKeyInput ? backupApiKeyInput.value.trim() : '',
+        backupModel: backupModelInput ? backupModelInput.value.trim() : 'gemini-1.5-flash',
+        backupUseServerProxy: backupProxyCheck ? backupProxyCheck.checked : false,
         systemPrompt: promptTextarea ? promptTextarea.value.trim() : DEFAULT_SYSTEM_PROMPT,
       };
 
       await saveAISettings(config);
-      showToast('AI Settings saved & synced to server!', 'success');
+      showToast('AI Settings & Backup Model saved successfully!', 'success');
     });
   }
 
