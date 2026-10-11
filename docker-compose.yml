@@ -1,0 +1,17 @@
+services:
+  componentvault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: componentvault:latest
+    container_name: componentvault
+    restart: unless-stopped
+    ports:
+      # Map container port 3000 to port 8080 on your host (change 8080 if needed)
+      - "8080:3000"
+    volumes:
+      # Persistent storage for components, images, and history
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/data
