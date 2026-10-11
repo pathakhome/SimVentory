@@ -10,9 +10,19 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 
   // Get saved preferences
   const viewMode = localStorage.getItem('cv_viewMode') || 'grid';
-  const activeCategory = localStorage.getItem('cv_filterCategory') || 'All';
-  const activeLocation = localStorage.getItem('cv_filterLocation') || 'All';
+  let activeCategory = localStorage.getItem('cv_filterCategory') || 'All';
+  let activeLocation = localStorage.getItem('cv_filterLocation') || 'All';
   const sortBy = localStorage.getItem('cv_sortBy') || 'name';
+
+  // Sanitize stale category/location filters if they no longer exist
+  if (activeCategory !== 'All' && activeCategory !== 'Favorites' && !categories.some(c => c.name.toLowerCase() === activeCategory.toLowerCase())) {
+    activeCategory = 'All';
+    localStorage.setItem('cv_filterCategory', 'All');
+  }
+  if (activeLocation !== 'All' && !locations.some(l => l.name.toLowerCase() === activeLocation.toLowerCase())) {
+    activeLocation = 'All';
+    localStorage.setItem('cv_filterLocation', 'All');
+  }
 
   container.innerHTML = `
     <div class="fade-in">
@@ -165,7 +175,8 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 
   function renderGridCard(item) {
     const imgSrc = cachedImageURLs[item.id] || '';
-    const catColor = getCategoryColor(item.category);
+    const catColor = getCategoryColor(item.category, categories);
+    const catIcon = getCategoryIcon(item.category, categories);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
 
     return `
