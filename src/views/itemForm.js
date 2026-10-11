@@ -176,12 +176,12 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <!-- Location with Datalist -->
           <div class="form-group">
             <label class="form-label" for="item-location" style="display:flex; justify-content:space-between; align-items:center;">
-              <span>Storage Location</span>
+              <span>Storage Location <span class="required">*</span></span>
               <button type="button" class="btn btn-secondary" id="btn-quick-add-loc" style="padding: 2px 8px; font-size: var(--font-size-xs); line-height: 1.2;">
                 + New Location
               </button>
             </label>
-            <input type="text" id="item-location" list="storage-locations-list" placeholder="e.g., Drawer A1, Bin 4, Shelf 2" value="${escapeAttr(item.location)}" />
+            <input type="text" id="item-location" list="storage-locations-list" placeholder="e.g., Drawer A1, Bin 4, Shelf 2" value="${escapeAttr(item.location)}" required />
             <datalist id="storage-locations-list">
               ${locations.map(l => `<option value="${escapeAttr(l.name)}">${escapeAttr(l.description ? `${l.name} - ${l.description}` : l.name)}</option>`).join('')}
             </datalist>
@@ -754,16 +754,21 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       return;
     }
 
+    const locationInput = document.getElementById('item-location');
+    const locationVal = locationInput ? locationInput.value.trim() : '';
+    if (!locationVal) {
+      showToast('Storage location is required', 'warning');
+      if (locationInput) locationInput.focus();
+      return;
+    }
+
     const now = new Date().toISOString();
     const id = isEdit ? editItemId : generateId();
-    const locationVal = document.getElementById('item-location').value.trim();
 
     // Auto-save location if new
-    if (locationVal) {
-      try {
-        await saveLocation({ name: locationVal });
-      } catch (e) {}
-    }
+    try {
+      await saveLocation({ name: locationVal });
+    } catch (e) {}
 
     const rawThreshold = document.getElementById('item-threshold').value.trim();
     const parsedThreshold = parseInt(rawThreshold, 10);

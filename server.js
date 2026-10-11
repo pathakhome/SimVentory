@@ -124,8 +124,8 @@ app.get('/api/items/:id', (req, res) => {
 // Add or update item
 app.post('/api/items', (req, res) => {
   const item = req.body;
-  if (!item || !item.id || !item.name) {
-    return res.status(400).json({ error: 'Item must have an id and a name' });
+  if (!item || !item.id || !item.name || !item.location || !String(item.location).trim()) {
+    return res.status(400).json({ error: 'Item must have an id, name, and storage location' });
   }
 
   const existingIndex = db.items.findIndex(i => i.id === item.id);
