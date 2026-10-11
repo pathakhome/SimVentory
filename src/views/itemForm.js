@@ -5,6 +5,7 @@ import { generateId, saveItem, getItem, getAllItems, saveImage, getImage, delete
 import { createDefaultItem } from '../categories.js';
 import { showToast } from '../toast.js';
 import { optimizeImage } from '../imageUtil.js';
+import { openCameraModal } from './cameraModal.js';
 
 /**
  * Render the add/edit item form.
@@ -56,8 +57,8 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <div class="form-group full-width">
             <label class="form-label">Image</label>
             <div class="image-upload-area ${existingImageUrl ? 'has-image' : ''}" id="image-upload-area">
-              <input type="file" id="image-file-input" accept="image/*" hidden />
-              <input type="file" id="camera-file-input" accept="image/*" capture="environment" hidden />
+              <input type="file" id="image-file-input" accept="image/*" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
+              <input type="file" id="camera-file-input" accept="image/*" capture="environment" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
               ${existingImageUrl ? `
                 <div class="image-preview-container">
                   <img class="image-preview" src="${existingImageUrl}" alt="Preview" id="image-preview" />
@@ -70,7 +71,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                   <div class="upload-placeholder-text">Click, tap, or drag & drop to add component photo</div>
                   <div class="upload-actions-row" style="display: flex; gap: 10px; margin-top: 8px; justify-content: center; flex-wrap: wrap;">
-                    <button type="button" class="btn btn-secondary btn-sm" id="btn-camera" style="pointer-events: auto;">
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-camera" style="pointer-events: auto;">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                       Take Photo
                     </button>
@@ -79,7 +80,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                       Choose File / Gallery
                     </button>
                   </div>
-                  <div class="upload-placeholder-hint" style="margin-top: 6px;">Camera auto-compression enabled (PNG, JPG, WebP)</div>
+                  <div class="upload-placeholder-hint" style="margin-top: 6px;">Live camera viewfinder or direct photo upload</div>
                 </div>
               `}
             </div>
@@ -206,10 +207,12 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     const btnCamera = document.getElementById('btn-camera');
     const btnBrowse = document.getElementById('btn-browse');
 
-    if (btnCamera && cameraInput) {
+    if (btnCamera) {
       btnCamera.addEventListener('click', (e) => {
         e.stopPropagation();
-        cameraInput.click();
+        openCameraModal({
+          onCapture: (blobOrFile) => handleImageFile(blobOrFile),
+        });
       });
     }
 
@@ -234,7 +237,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   }
 
   uploadArea.addEventListener('click', (e) => {
-    if (e.target.closest('.image-remove-btn') || e.target.closest('button')) return;
+    if (e.target.closest('.image-remove-btn') || e.target.closest('button') || e.target.closest('label')) return;
     const fileInput = document.getElementById('image-file-input');
     if (fileInput) fileInput.click();
   });
@@ -293,13 +296,13 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       existingImageUrl = null;
       uploadArea.classList.remove('has-image');
       uploadArea.innerHTML = `
-        <input type="file" id="image-file-input" accept="image/*" hidden />
-        <input type="file" id="camera-file-input" accept="image/*" capture="environment" hidden />
+        <input type="file" id="image-file-input" accept="image/*" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
+        <input type="file" id="camera-file-input" accept="image/*" capture="environment" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
         <div class="upload-placeholder" id="upload-placeholder">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <div class="upload-placeholder-text">Click, tap, or drag & drop to add component photo</div>
           <div class="upload-actions-row" style="display: flex; gap: 10px; margin-top: 8px; justify-content: center; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary btn-sm" id="btn-camera" style="pointer-events: auto;">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-camera" style="pointer-events: auto;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               Take Photo
             </button>
@@ -308,7 +311,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
               Choose File / Gallery
             </button>
           </div>
-          <div class="upload-placeholder-hint" style="margin-top: 6px;">Camera auto-compression enabled (PNG, JPG, WebP)</div>
+          <div class="upload-placeholder-hint" style="margin-top: 6px;">Live camera viewfinder or direct photo upload</div>
         </div>
       `;
       bindUploadEvents();

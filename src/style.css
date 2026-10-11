@@ -1644,3 +1644,39 @@ img {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Barcode & QR Scanner Styles ---------- */
+#qr-reader {
+  width: 100% !important;
+  border: none !important;
+}
+
+#qr-reader video {
+  width: 100% !important;
+  max-height: 320px !important;
+  object-fit: cover !important;
+  border-radius: 12px !important;
+}
+
+#qr-reader__scan_region {
+  background: transparent !important;
+}
+
+#qr-reader__dashboard {
+  padding: 0 !important;
+}
+
+@keyframes scannerSweep {
+  0% {
+    top: 0%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 96%;
+    opacity: 1;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.8;
+  }
+}

@@ -83,6 +83,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Request logging middleware (shows activity in Docker/Portainer logs)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    // Keep logs readable by suppressing repetitive 200 OK Docker healthcheck pings
+    if (req.path === '/api/health' && res.statusCode === 200) return;
+    const duration = Date.now() - start;
+    const time = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    console.log(`[${time}] ${req.method} ${req.originalUrl} ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
+
 // ---- REST API Routes ----
 
 // Health check
