@@ -52,6 +52,52 @@ For example: `http://192.168.1.50:8080`
 
 ---
 
+## ⚡ Instant Pull & Deploy (No Source Code Needed on Pi)
+
+Once you push your repository to GitHub, the included **GitHub Actions workflow** (`.github/workflows/docker-publish.yml`) automatically builds and publishes a multi-arch container image (`linux/arm64` and `linux/amd64`) to **GitHub Container Registry (GHCR)**.
+
+On your Raspberry Pi or home server, you do **not** need the source code or build tools. You just need a single `docker-compose.yml`:
+
+### 1. Create a Directory & Compose File on your Raspberry Pi:
+```bash
+mkdir -p ~/inventory && cd ~/inventory
+nano docker-compose.yml
+```
+
+Paste this configuration (replace `<your-github-username>` with your actual GitHub username):
+```yaml
+services:
+  componentvault:
+    image: ghcr.io/<your-github-username>/inventory:latest
+    container_name: componentvault
+    restart: unless-stopped
+    ports:
+      - "8080:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/data
+```
+
+### 2. Pull & Run:
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### 3. Future Updates (1-liner):
+Whenever you push changes or new commits to GitHub, wait 1–2 minutes for GitHub Actions to build the image, then simply run on your Pi:
+```bash
+docker compose pull && docker compose up -d
+```
+All your items, photos, and settings stay completely safe in `./data/`.
+
+> **Note on GHCR package visibility**:
+> In GitHub, go to your repository → **Packages** (on the right sidebar) → click on the package → **Package settings** → change visibility to **Public** so your Raspberry Pi can pull it without needing `docker login`. (Or run `echo $GITHUB_TOKEN | docker login ghcr.io -u <username> --password-stdin` if keeping private).
+
+---
+
 ## 📱 Mobile Browser Camera & Photo Upload
 
 When accessing ComponentVault from your smartphone browser (Safari on iOS, Chrome / Firefox on Android):

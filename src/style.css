@@ -1152,6 +1152,13 @@ img {
   box-shadow: none;
 }
 
+.btn-existing-tag-chip:hover {
+  border-color: var(--accent-primary) !important;
+  color: var(--text-primary) !important;
+  background: var(--accent-primary-glow) !important;
+  transform: translateY(-1px);
+}
+
 /* Form Buttons */
 .form-actions {
   display: flex;

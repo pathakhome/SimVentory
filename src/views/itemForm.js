@@ -1,7 +1,7 @@
 /**
  * Add / Edit Item form view.
  */
-import { generateId, saveItem, getItem, saveImage, getImage, deleteImage, addHistory, getCategories, saveCategory, getLocations, saveLocation } from '../db.js';
+import { generateId, saveItem, getItem, getAllItems, saveImage, getImage, deleteImage, addHistory, getCategories, saveCategory, getLocations, saveLocation } from '../db.js';
 import { createDefaultItem } from '../categories.js';
 import { showToast } from '../toast.js';
 import { optimizeImage } from '../imageUtil.js';
@@ -36,6 +36,12 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
   let categories = await getCategories();
   let locations = await getLocations();
+  const allItems = await getAllItems();
+  const allUniqueTags = Array.from(new Set(
+    allItems.flatMap(i => (Array.isArray(i.tags) ? i.tags : []))
+      .map(t => (t || '').trim())
+      .filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b));
 
   container.innerHTML = `
     <div class="fade-in">
@@ -107,7 +113,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <!-- Low Stock Threshold -->
           <div class="form-group">
             <label class="form-label" for="item-threshold">Low Stock Threshold</label>
-            <input type="number" id="item-threshold" min="0" value="${item.lowStockThreshold}" />
+            <input type="number" id="item-threshold" min="0" value="${item.lowStockThreshold !== undefined && item.lowStockThreshold !== null ? item.lowStockThreshold : 2}" />
           </div>
 
           <!-- Part Number with Scanner Button -->
@@ -156,10 +162,19 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
           <!-- Tags -->
           <div class="form-group full-width">
-            <label class="form-label">Tags <span style="font-weight:400; color: var(--text-tertiary);">— Press Enter or comma to add</span></label>
+            <label class="form-label">Tags <span style="font-weight:400; color: var(--text-tertiary);">— Type, pick from suggestions, or press Enter/comma</span></label>
             <div class="tag-input-container" id="tag-container">
               ${(item.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}<button type="button">&times;</button></span>`).join('')}
-              <input type="text" class="tag-input" id="tag-input" placeholder="Add tag..." />
+              <input type="text" class="tag-input" id="tag-input" list="existing-tags-datalist" placeholder="Add tag..." autocomplete="off" />
+              <datalist id="existing-tags-datalist">
+                ${allUniqueTags.map(t => `<option value="${escapeAttr(t)}"></option>`).join('')}
+              </datalist>
+            </div>
+            <div class="existing-tags-wrapper" id="existing-tags-wrapper" style="margin-top: 8px;">
+              <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 6px;">
+                Existing tags in your vault (click to add):
+              </div>
+              <div class="existing-tags-cloud" id="existing-tags-cloud" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
             </div>
           </div>
 
@@ -306,13 +321,44 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   // ---- Tags ----
   const tagContainer = document.getElementById('tag-container');
   const tagInput = document.getElementById('tag-input');
+  const existingTagsCloud = document.getElementById('existing-tags-cloud');
+  const existingTagsWrapper = document.getElementById('existing-tags-wrapper');
   let tags = [...(item.tags || [])];
+
+  function renderExistingTagsCloud() {
+    if (!existingTagsCloud || !existingTagsWrapper) return;
+    const available = allUniqueTags.filter(t => !tags.includes(t));
+    if (available.length === 0) {
+      existingTagsWrapper.style.display = 'none';
+      return;
+    }
+    existingTagsWrapper.style.display = 'block';
+    existingTagsCloud.innerHTML = available.map(t => `
+      <button type="button" class="btn-existing-tag-chip" data-tag="${escapeAttr(t)}" style="background: var(--bg-card); border: 1px solid var(--border-secondary); color: var(--text-secondary); border-radius: var(--border-radius-full); padding: 3px 10px; font-size: var(--font-size-xs); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all var(--transition-fast);">
+        <span style="color: var(--accent-primary); font-weight: 700;">+</span> <span>${escapeHtml(t)}</span>
+      </button>
+    `).join('');
+  }
+
+  renderExistingTagsCloud();
+
+  if (existingTagsCloud) {
+    existingTagsCloud.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn-existing-tag-chip');
+      if (btn && btn.dataset.tag) {
+        addTag(btn.dataset.tag);
+        renderExistingTagsCloud();
+        tagInput.focus();
+      }
+    });
+  }
 
   tagContainer.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON' && e.target.parentElement.classList.contains('tag-chip')) {
       const tag = e.target.parentElement.dataset.tag;
       tags = tags.filter(t => t !== tag);
       e.target.parentElement.remove();
+      renderExistingTagsCloud();
     } else {
       tagInput.focus();
     }
@@ -323,21 +369,34 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       e.preventDefault();
       addTag(tagInput.value.trim().replace(',', ''));
       tagInput.value = '';
+      renderExistingTagsCloud();
     }
     if (e.key === 'Backspace' && !tagInput.value && tags.length > 0) {
       const removed = tags.pop();
       const chips = tagContainer.querySelectorAll('.tag-chip');
       if (chips.length > 0) chips[chips.length - 1].remove();
+      renderExistingTagsCloud();
+    }
+  });
+
+  // Handle selecting from browser datalist autocomplete
+  tagInput.addEventListener('change', () => {
+    const val = tagInput.value.trim();
+    if (val && allUniqueTags.includes(val)) {
+      addTag(val);
+      tagInput.value = '';
+      renderExistingTagsCloud();
     }
   });
 
   function addTag(tag) {
-    if (tags.includes(tag)) return;
-    tags.push(tag);
+    const clean = tag.trim();
+    if (!clean || tags.includes(clean)) return;
+    tags.push(clean);
     const chip = document.createElement('span');
     chip.className = 'tag-chip';
-    chip.dataset.tag = tag;
-    chip.innerHTML = `${escapeHtml(tag)}<button type="button">&times;</button>`;
+    chip.dataset.tag = clean;
+    chip.innerHTML = `${escapeHtml(clean)}<button type="button">&times;</button>`;
     tagContainer.insertBefore(chip, tagInput);
   }
 
@@ -421,14 +480,22 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       } catch (e) {}
     }
 
+    const rawThreshold = document.getElementById('item-threshold').value.trim();
+    const parsedThreshold = parseInt(rawThreshold, 10);
+    const lowStockThreshold = isNaN(parsedThreshold) ? 2 : Math.max(0, parsedThreshold);
+
+    const rawQty = document.getElementById('item-quantity').value.trim();
+    const parsedQty = parseInt(rawQty, 10);
+    const quantity = isNaN(parsedQty) ? 0 : Math.max(0, parsedQty);
+
     const savedItem = {
       id,
       name,
       description: document.getElementById('item-desc').value.trim(),
       category: document.getElementById('item-category').value,
       tags,
-      quantity: parseInt(document.getElementById('item-quantity').value) || 0,
-      lowStockThreshold: parseInt(document.getElementById('item-threshold').value) || 2,
+      quantity,
+      lowStockThreshold,
       partNumber: document.getElementById('item-partnum').value.trim(),
       location: locationVal,
       datasheetUrl: document.getElementById('item-datasheet').value.trim(),
