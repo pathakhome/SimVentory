@@ -6,6 +6,7 @@
 
 import { generateId, saveImage, getImage, saveItem, addHistory, getCategories, saveLocation } from '../db.js';
 import { analyzeComponentImage } from './aiService.js';
+import { optimizeImage } from '../imageUtil.js';
 
 const QUEUE_STORAGE_KEY = 'simventory_ai_intake_queue';
 
@@ -14,12 +15,28 @@ let isProcessing = false;
 let listeners = new Set();
 
 /**
- * Load queue from localStorage on module init
+ * Load queue from localStorage on module init or state sync.
+ * Auto-recovers any zombie 'processing' items back to 'queued' if not actively processing.
  */
 function loadQueue() {
   try {
     const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
     queue = raw ? JSON.parse(raw) : [];
+
+    // Zombie check: If in-memory isProcessing is false, any item marked 'processing'
+    // is a zombie from an aborted session or page refresh. Reset it to 'queued'.
+    if (!isProcessing) {
+      let changed = false;
+      for (const item of queue) {
+        if (item.status === 'processing') {
+          item.status = 'queued';
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+      }
+    }
   } catch (_) {
     queue = [];
   }
@@ -79,16 +96,26 @@ export function getQueueSummary() {
 export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', defaultHint = '', defaultQuantity = 1, defaultThreshold = 0 } = {}) {
   loadQueue();
   const newItems = [];
+  const fileArray = Array.from(files);
 
-  for (const file of files) {
+  for (const file of fileArray) {
     const id = generateId();
-    // Save image directly to database under item ID
-    await saveImage(id, file);
+
+    // Optimize image (compress 12MP+ camera photos to crisp ~200-400KB WebP)
+    let optimizedBlob = file;
+    try {
+      optimizedBlob = await optimizeImage(file, 1600, 0.85);
+    } catch (optErr) {
+      console.warn('[QueueService] Image optimization failed, using original file:', optErr);
+    }
+
+    // Save optimized image directly to storage under item ID
+    await saveImage(id, optimizedBlob);
 
     const item = {
       id,
       fileName: file.name || 'Component Photo',
-      fileSize: file.size || 0,
+      fileSize: optimizedBlob.size || file.size || 0,
       status: 'queued', // queued | processing | ready | error
       error: null,
       location: defaultLocation,
@@ -101,9 +128,10 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
 
     queue.push(item);
     newItems.push(item);
+    // Persist per-item so user sees cards staged immediately in UI
+    persistQueue();
   }
 
-  persistQueue();
   // Automatically start background processing
   processQueue();
   return newItems;
@@ -115,6 +143,13 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
 export async function processQueue() {
   if (isProcessing) return;
   loadQueue();
+
+  // Safety check: recover any zombie 'processing' items to 'queued'
+  for (const item of queue) {
+    if (item.status === 'processing') {
+      item.status = 'queued';
+    }
+  }
 
   const nextItem = queue.find(i => i.status === 'queued');
   if (!nextItem) {
@@ -144,11 +179,24 @@ export async function processQueue() {
           throw new Error('Image data not found in storage.');
         }
 
-        const aiResult = await analyzeComponentImage({
-          image: imageBlob,
-          categories: catNames,
-          hint: current.hint || '',
-        });
+        // 45-second per-item safety timeout so queue never deadlocks
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AI analysis timed out after 45 seconds')), 45000)
+        );
+
+        const aiResult = await Promise.race([
+          analyzeComponentImage({
+            image: imageBlob,
+            categories: catNames,
+            hint: current.hint || '',
+          }),
+          timeoutPromise,
+        ]);
+
+        // Verify the item wasn't discarded or queue cleared during the API request
+        if (!queue.some(i => i.id === current.id)) {
+          continue;
+        }
 
         current.status = 'ready';
         current.aiData = aiResult;
@@ -162,8 +210,11 @@ export async function processQueue() {
         current.datasheetUrl = aiResult.datasheetUrl || '';
       } catch (err) {
         console.error(`[QueueService] Error processing item ${current.id}:`, err);
-        current.status = 'error';
-        current.error = err.message || 'AI recognition failed';
+        // Verify item is still in queue before setting error state
+        if (queue.some(i => i.id === current.id)) {
+          current.status = 'error';
+          current.error = err.message || 'AI recognition failed';
+        }
       }
 
       persistQueue();
@@ -277,6 +328,9 @@ export async function approveAllReady(globalLocation = null) {
 export function discardQueueItem(id) {
   loadQueue();
   queue = queue.filter(i => i.id !== id);
+  if (queue.length === 0) {
+    isProcessing = false;
+  }
   persistQueue();
 }
 
@@ -284,9 +338,13 @@ export function discardQueueItem(id) {
  * Clear all items from the queue
  */
 export function clearQueue() {
+  isProcessing = false;
   queue = [];
   persistQueue();
 }
 
-// Initial load
+// Initial load & auto-resume queued items
 loadQueue();
+if (queue.some(i => i.status === 'queued')) {
+  processQueue();
+}

@@ -266,6 +266,7 @@ async function dispatchRequest({ url, method = 'POST', headers = {}, body, useSe
       method,
       headers,
       body: typeof body === 'object' ? JSON.stringify(body) : body,
+      signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined,
     });
     if (!res.ok) {
       let errText = '';
@@ -285,6 +286,7 @@ async function dispatchRequest({ url, method = 'POST', headers = {}, body, useSe
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, method, headers, body }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined,
     });
     if (!res.ok) {
       let errText = '';

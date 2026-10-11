@@ -8,6 +8,7 @@ import {
   getQueueItems,
   getQueueSummary,
   addFilesToQueue,
+  processQueue,
   approveQueueItem,
   approveAllReady,
   discardQueueItem,
@@ -271,8 +272,13 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
               </div>
             ` : ''}
           ` : isError ? `
-            <div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-bottom: 8px;">
+            <div style="font-size: var(--font-size-xs); color: var(--accent-danger); margin-bottom: 8px;">
               ${escapeHtml(item.fileName)} • Error: ${escapeHtml(item.error)}
+            </div>
+          ` : isProcessing ? `
+            <div style="font-size: var(--font-size-xs); color: var(--accent-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <span>${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Analyzing with AI in background...</span>
             </div>
           ` : `
             <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 8px;">
@@ -464,6 +470,11 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
   const initialItems = getQueueItems();
   await syncThumbnails(initialItems);
   render();
+
+  // Resume or start processing if any items are queued
+  if (initialItems.some(i => i.status === 'queued')) {
+    processQueue();
+  }
 }
 
 function escapeHtml(str) {
