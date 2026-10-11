@@ -26,9 +26,15 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 
   container.innerHTML = `
     <div class="fade-in">
-      <div class="view-header">
-        <h1>Inventory</h1>
-        <p>${items.length} component${items.length !== 1 ? 's' : ''} in your collection</p>
+      <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h1>Inventory</h1>
+          <p>${items.length} component${items.length !== 1 ? 's' : ''} in your collection</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="inventory-add-item-btn" style="display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          + Add Item
+        </button>
       </div>
 
       <div class="inventory-toolbar">
@@ -71,6 +77,11 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       <div id="items-container"></div>
     </div>
   `;
+
+  const addItemBtn = document.getElementById('inventory-add-item-btn');
+  if (addItemBtn) {
+    addItemBtn.addEventListener('click', () => navigateTo('add-item'));
+  }
 
   const searchInput = document.getElementById('inventory-search');
   const sortSelect = document.getElementById('inventory-sort');

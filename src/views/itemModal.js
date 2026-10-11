@@ -1,9 +1,11 @@
 /**
  * Item Detail Modal renderer.
  */
-import { getItem, getImage, getHistory, deleteItem } from '../db.js';
+import { getItem, getImage, getHistory, deleteItem, saveItem, addHistory, getCategories } from '../db.js';
 import { getCategoryColor, getCategoryIcon } from '../categories.js';
 import { showToast } from '../toast.js';
+import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
+import { openAIReviewModal } from './aiReviewModal.js';
 
 /**
  * Open the item detail modal.
@@ -34,7 +36,15 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
       </button>
     </div>
     <div class="modal-body">
-      ${imageSrc ? `<img class="modal-image" src="${imageSrc}" alt="${escapeHtml(item.name)}" />` : ''}
+      ${imageSrc ? `
+        <div style="position: relative; margin-bottom: 14px;">
+          <img class="modal-image" src="${imageSrc}" alt="${escapeHtml(item.name)}" style="margin-bottom: 0;" />
+          <button type="button" class="btn btn-primary btn-sm" id="modal-ai-analyze-btn" style="position: absolute; bottom: 10px; right: 10px; display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; box-shadow: 0 4px 14px rgba(0,0,0,0.5); font-size: var(--font-size-xs); font-weight: 600;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Generate Details with AI
+          </button>
+        </div>
+      ` : ''}
 
       <div class="modal-detail-grid">
         <div class="modal-detail-item">
@@ -95,15 +105,23 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
       </div>
       ` : ''}
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-primary btn-sm" id="modal-edit-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Edit
-      </button>
-      <button class="btn btn-danger btn-sm" id="modal-delete-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        Delete
-      </button>
+    <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      ${imageSrc ? `
+        <button class="btn btn-secondary btn-sm" id="modal-ai-footer-btn" style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(99,102,241,0.3); color: var(--text-primary);" title="Re-analyze image and update component details">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          AI Re-analyze Photo
+        </button>
+      ` : `<span></span>`}
+      <div style="display: flex; gap: 8px; margin-left: auto;">
+        <button class="btn btn-primary btn-sm" id="modal-edit-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
+        <button class="btn btn-danger btn-sm" id="modal-delete-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Delete
+        </button>
+      </div>
     </div>
   `;
 
@@ -127,6 +145,89 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
   modal.addEventListener('click', (e) => {
     if (e.target === modal) closeModal();
   });
+
+  // AI Re-analysis Handler
+  const handleAIAnalysis = async (triggerBtn) => {
+    if (!imageBlob && !imageSrc) {
+      showToast('No photo found for this component', 'warning');
+      return;
+    }
+
+    const aiSettings = getAISettings();
+    if (!aiSettings.enabled) {
+      showToast('AI recognition is disabled in Settings', 'warning');
+      return;
+    }
+
+    const origContent = triggerBtn ? triggerBtn.innerHTML : '';
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.innerHTML = `
+        <svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        Analyzing Photo...
+      `;
+    }
+    showToast(`Analyzing ${item.name || 'component'} with AI...`, 'info');
+
+    try {
+      const categories = await getCategories();
+      const detected = await analyzeComponentImage({
+        image: imageBlob || imageSrc,
+        categories: categories.map(c => c.name),
+        existingItem: item,
+      });
+
+      openAIReviewModal({
+        aiData: detected,
+        imageSrc,
+        categories,
+        existingItem: item,
+        onApply: async (applied) => {
+          const updatedItem = {
+            ...item,
+            ...applied,
+            updatedAt: new Date().toISOString(),
+          };
+
+          if (applied.notes !== undefined) {
+            updatedItem.notes = applied.notes;
+          }
+
+          if (Array.isArray(applied.tags)) {
+            const mergedTags = Array.from(new Set([...(item.tags || []), ...applied.tags]));
+            updatedItem.tags = mergedTags;
+          }
+
+          await saveItem(updatedItem);
+          await addHistory({
+            itemId: item.id,
+            action: 'updated',
+            notes: `AI generated details applied (${detected.modelUsed || 'AI vision'})`,
+          });
+
+          showToast(`✨ AI details updated for "${updatedItem.name}"!`, 'success');
+          closeModal();
+          if (refreshView) refreshView();
+          // Re-open detail modal with newly saved values
+          openItemDetailModal(itemId, { navigateTo, refreshView });
+        },
+      });
+    } catch (err) {
+      console.error('AI Analysis Error:', err);
+      showToast(err.message || 'AI analysis failed', 'error');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = origContent;
+      }
+    }
+  };
+
+  const btnAi = document.getElementById('modal-ai-analyze-btn');
+  if (btnAi) btnAi.addEventListener('click', () => handleAIAnalysis(btnAi));
+
+  const btnAiFooter = document.getElementById('modal-ai-footer-btn');
+  if (btnAiFooter) btnAiFooter.addEventListener('click', () => handleAIAnalysis(btnAiFooter));
 
   // Edit
   document.getElementById('modal-edit-btn').addEventListener('click', () => {

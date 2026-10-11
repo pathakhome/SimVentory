@@ -379,6 +379,48 @@ app.post('/api/clear', (req, res) => {
   res.json({ success: true });
 });
 
+// AI Proxy endpoint (bypasses browser CORS for local Ollama, LM Studio, or external endpoints)
+app.post('/api/ai/proxy', async (req, res) => {
+  try {
+    const { url, method = 'POST', headers = {}, body } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: 'Missing url parameter' });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return res.status(400).json({ error: 'Invalid URL provided' });
+    }
+
+    const fetchHeaders = { ...headers };
+    // Remove host header if forwarded
+    delete fetchHeaders['host'];
+
+    const response = await fetch(parsedUrl.toString(), {
+      method,
+      headers: fetchHeaders,
+      body: typeof body === 'object' ? JSON.stringify(body) : body,
+    });
+
+    const responseText = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(responseText);
+    } catch (_) {}
+
+    if (!response.ok) {
+      return res.status(response.status).json(json || { error: responseText || response.statusText });
+    }
+
+    res.json(json || { text: responseText });
+  } catch (err) {
+    console.error('AI Proxy Error:', err.message);
+    res.status(500).json({ error: 'AI proxy request failed: ' + err.message });
+  }
+});
+
 // Helpers for image files
 function getExtensionFromMime(mime) {
   if (mime.includes('png')) return 'png';

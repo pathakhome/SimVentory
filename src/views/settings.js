@@ -17,11 +17,21 @@ import {
   deleteLocation,
 } from '../db.js';
 import { showToast } from '../toast.js';
+import {
+  getAISettings,
+  saveAISettings,
+  testAIConnection,
+  PROVIDER_PRESETS,
+  DEFAULT_SYSTEM_PROMPT,
+  STATIC_JSON_SCHEMA,
+} from '../services/aiService.js';
 
 export async function renderSettings(container, { refreshView }) {
   const items = await getAllItems();
   const categories = await getCategories();
   const locations = await getLocations();
+  const aiSettings = getAISettings();
+  const currentPreset = PROVIDER_PRESETS[aiSettings.provider] || PROVIDER_PRESETS.custom;
 
   const EMOJI_PRESETS = ['🏷️', '🔌', '💡', '🧰', '📟', '🎛️', '🔬', '🪛', '📻', '🔋', '⚡', '🤖'];
 
@@ -155,6 +165,133 @@ export async function renderSettings(container, { refreshView }) {
             `).join('')}
           </div>
         `}
+      </div>
+
+      <!-- AI Vision & Autofill Settings -->
+      <div class="settings-section">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div>
+            <h3>🤖 AI Vision & Autofill Settings</h3>
+            <p style="color:var(--text-secondary); font-size:var(--font-size-sm); margin-top:2px;">
+              Configure OpenRouter, Google Gemini, OpenAI, or local Ollama to recognize component photos and autofill details.
+            </p>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px;">
+          <!-- Enable AI toggle -->
+          <div class="settings-row" style="padding-top:0; border-bottom:1px solid var(--border-primary); padding-bottom:12px; margin-bottom:14px;">
+            <div class="settings-row-info">
+              <h4>Enable AI Component Recognition</h4>
+              <p>Show AI recognition options when photographing or uploading parts</p>
+            </div>
+            <label class="switch" style="position:relative; display:inline-block; width:46px; height:24px; cursor:pointer;">
+              <input type="checkbox" id="ai-enabled-toggle" ${aiSettings.enabled ? 'checked' : ''} style="display:none;" />
+              <span id="ai-toggle-track" style="position:absolute; inset:0; background:${aiSettings.enabled ? 'var(--accent-primary)' : 'var(--bg-tertiary)'}; border-radius:24px; transition:background 0.25s ease; border:1px solid var(--border-secondary);">
+                <span id="ai-toggle-thumb" style="position:absolute; top:2px; left:${aiSettings.enabled ? '24px' : '3px'}; width:18px; height:18px; background:#fff; border-radius:50%; transition:left 0.25s ease; box-shadow:0 1px 3px rgba(0,0,0,0.4);"></span>
+              </span>
+            </label>
+          </div>
+
+          <form id="ai-settings-form" style="display:flex; flex-direction:column; gap:14px;">
+            <!-- Provider Preset -->
+            <div>
+              <label class="form-label" style="font-size:var(--font-size-xs);">AI Provider</label>
+              <select id="ai-provider-select" style="width:100%;">
+                ${Object.values(PROVIDER_PRESETS).map(p => `
+                  <option value="${p.id}" ${aiSettings.provider === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>
+                `).join('')}
+              </select>
+              <div id="ai-provider-hint" style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                ${escapeHtml(currentPreset.hint)}
+              </div>
+            </div>
+
+            <!-- Endpoint URL -->
+            <div>
+              <label class="form-label" style="font-size:var(--font-size-xs);">API Endpoint URL</label>
+              <input type="url" id="ai-endpoint-input" value="${escapeAttr(aiSettings.endpoint)}" placeholder="https://..." style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+            </div>
+
+            <!-- API Key -->
+            <div>
+              <label class="form-label" style="font-size:var(--font-size-xs); display:flex; justify-content:space-between;">
+                <span>API Key</span>
+                <span id="ai-key-hint" style="font-size:11px; color:var(--text-tertiary);">${currentPreset.requiresKey ? 'Required' : 'Optional / Not needed'}</span>
+              </label>
+              <div style="display:flex; gap:8px;">
+                <input type="password" id="ai-apikey-input" value="${escapeAttr(aiSettings.apiKey)}" placeholder="${escapeAttr(currentPreset.placeholderKey)}" style="flex:1; font-family:monospace; font-size:var(--font-size-sm);" />
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-apikey-visibility" title="Show/Hide API Key" style="padding:0 10px;">
+                  👁️
+                </button>
+              </div>
+            </div>
+
+            <!-- Model Name -->
+            <div>
+              <label class="form-label" style="font-size:var(--font-size-xs);">Vision Model Name</label>
+              <input type="text" id="ai-model-input" value="${escapeAttr(aiSettings.model)}" placeholder="e.g. google/gemini-2.0-flash-001" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+              
+              <!-- Quick suggested model chips -->
+              <div id="ai-suggested-models" style="display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+                <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
+                ${(currentPreset.suggestedModels || []).map(m => `
+                  <button type="button" class="btn-preset-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Server Proxy CORS bypass -->
+            <div style="display:flex; align-items:flex-start; gap:8px; margin-top:2px;">
+              <input type="checkbox" id="ai-server-proxy-check" ${aiSettings.useServerProxy ? 'checked' : ''} style="margin-top:3px; accent-color:var(--accent-primary);" />
+              <label for="ai-server-proxy-check" style="font-size:var(--font-size-xs); color:var(--text-secondary); cursor:pointer;">
+                <strong>Route requests via SimVentory server</strong> (Bypasses browser CORS errors for local Ollama, LM Studio, or homelab machines).
+              </label>
+            </div>
+
+            <!-- Customizable Prompt & Static Schema -->
+            <div style="border-top:1px solid var(--border-primary); padding-top:14px; margin-top:4px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <label class="form-label" for="ai-prompt-input" style="font-size:var(--font-size-xs); font-weight:600; margin-bottom:0;">
+                  📝 AI Vision Prompt (Customizable)
+                </label>
+                <button type="button" class="btn btn-secondary btn-sm" id="ai-reset-prompt-btn" style="padding:2px 8px; font-size:11px;">
+                  ↺ Reset Prompt
+                </button>
+              </div>
+              <p style="font-size:11px; color:var(--text-tertiary); margin-bottom:8px;">
+                Customize the prompt instructions. Use <code>{CATEGORIES}</code> where current category options will be injected. SKU is instructed to only be filled when a barcode is present.
+              </p>
+              <textarea id="ai-prompt-input" rows="8" style="width:100%; font-family:monospace; font-size:11.5px; line-height:1.45; resize:vertical; background:var(--bg-primary); border:1px solid var(--border-secondary); border-radius:6px; padding:10px; color:var(--text-primary);">${escapeHtml(aiSettings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
+            </div>
+
+            <!-- Static JSON Schema Viewer -->
+            <div style="background:var(--bg-primary); border:1px solid var(--border-primary); border-radius:8px; padding:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-primary);">
+                  📋 Static JSON Output Schema
+                </span>
+                <span style="font-size:10px; color:var(--text-tertiary); font-family:monospace;">application/json</span>
+              </div>
+              <p style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">
+                The vision models strictly output this static JSON schema to populate SimVentory component records:
+              </p>
+              <pre style="font-size:11px; font-family:monospace; color:var(--accent-primary-hover); margin:0; overflow-x:auto; background:rgba(0,0,0,0.3); padding:10px; border-radius:6px; border:1px solid var(--border-primary);">${escapeHtml(JSON.stringify(STATIC_JSON_SCHEMA, null, 2))}</pre>
+            </div>
+
+            <!-- Actions: Test & Save -->
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+              <button type="button" class="btn btn-secondary btn-sm" id="ai-test-btn" style="display:inline-flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Test Connection
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm" id="ai-save-btn" style="display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg, #6366f1, #a855f7);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Save AI Settings
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
 
       <!-- Appearance -->
@@ -335,6 +472,148 @@ export async function renderSettings(container, { refreshView }) {
     const label = document.querySelector('.theme-label');
     if (label) label.textContent = theme === 'light' ? 'Light Mode' : 'Dark Mode';
   });
+
+  // ---- AI Settings Event Handlers ----
+  const aiToggle = document.getElementById('ai-enabled-toggle');
+  const aiTrack = document.getElementById('ai-toggle-track');
+  const aiThumb = document.getElementById('ai-toggle-thumb');
+
+  if (aiToggle && aiTrack && aiThumb) {
+    aiToggle.addEventListener('change', () => {
+      const isEnabled = aiToggle.checked;
+      aiTrack.style.backgroundColor = isEnabled ? 'var(--accent-primary)' : 'var(--bg-tertiary)';
+      aiThumb.style.left = isEnabled ? '24px' : '3px';
+      saveAISettings({ enabled: isEnabled });
+      showToast(isEnabled ? 'AI features enabled' : 'AI features disabled', 'info');
+    });
+  }
+
+  // Provider change
+  const providerSelect = document.getElementById('ai-provider-select');
+  const endpointInput = document.getElementById('ai-endpoint-input');
+  const apiKeyInput = document.getElementById('ai-apikey-input');
+  const modelInput = document.getElementById('ai-model-input');
+  const providerHint = document.getElementById('ai-provider-hint');
+  const keyHint = document.getElementById('ai-key-hint');
+  const suggestedModelsContainer = document.getElementById('ai-suggested-models');
+  const proxyCheck = document.getElementById('ai-server-proxy-check');
+
+  function bindModelChipListeners() {
+    container.querySelectorAll('.btn-preset-model').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (modelInput) modelInput.value = btn.dataset.model;
+      });
+    });
+  }
+  bindModelChipListeners();
+
+  if (providerSelect) {
+    providerSelect.addEventListener('change', () => {
+      const selectedId = providerSelect.value;
+      const preset = PROVIDER_PRESETS[selectedId] || PROVIDER_PRESETS.custom;
+
+      if (preset.endpoint) endpointInput.value = preset.endpoint;
+      if (preset.defaultModel) modelInput.value = preset.defaultModel;
+      if (preset.placeholderKey) apiKeyInput.placeholder = preset.placeholderKey;
+
+      if (providerHint) providerHint.textContent = preset.hint;
+      if (keyHint) keyHint.textContent = preset.requiresKey ? 'Required' : 'Optional / Not needed';
+
+      // Set server proxy recommended for local Ollama
+      if (selectedId === 'local' && proxyCheck) {
+        proxyCheck.checked = true;
+      }
+
+      if (suggestedModelsContainer) {
+        suggestedModelsContainer.innerHTML = `
+          <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
+          ${(preset.suggestedModels || []).map(m => `
+            <button type="button" class="btn-preset-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
+          `).join('')}
+        `;
+        bindModelChipListeners();
+      }
+    });
+  }
+
+  // API Key Visibility Toggle
+  const toggleKeyBtn = document.getElementById('btn-toggle-apikey-visibility');
+  if (toggleKeyBtn && apiKeyInput) {
+    toggleKeyBtn.addEventListener('click', () => {
+      if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+        toggleKeyBtn.textContent = '🔒';
+      } else {
+        apiKeyInput.type = 'password';
+        toggleKeyBtn.textContent = '👁️';
+      }
+    });
+  }
+
+  // Test Connection
+  const testBtn = document.getElementById('ai-test-btn');
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      const config = {
+        enabled: aiToggle ? aiToggle.checked : true,
+        provider: providerSelect.value,
+        endpoint: endpointInput.value.trim(),
+        apiKey: apiKeyInput.value.trim(),
+        model: modelInput.value.trim(),
+        useServerProxy: proxyCheck ? proxyCheck.checked : false,
+      };
+
+      testBtn.disabled = true;
+      testBtn.innerHTML = `
+        <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        Testing...
+      `;
+
+      try {
+        const result = await testAIConnection(config);
+        showToast(result.message, 'success');
+      } catch (err) {
+        console.error('AI Test error:', err);
+        showToast('Connection failed: ' + err.message, 'error');
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Test Connection
+        `;
+      }
+    });
+  }
+
+  // Reset Prompt Button
+  const resetPromptBtn = document.getElementById('ai-reset-prompt-btn');
+  const promptTextarea = document.getElementById('ai-prompt-input');
+  if (resetPromptBtn && promptTextarea) {
+    resetPromptBtn.addEventListener('click', () => {
+      promptTextarea.value = DEFAULT_SYSTEM_PROMPT;
+      showToast('Prompt reset to default template', 'info');
+    });
+  }
+
+  // Save AI Settings Form
+  const aiForm = document.getElementById('ai-settings-form');
+  if (aiForm) {
+    aiForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const config = {
+        enabled: aiToggle ? aiToggle.checked : true,
+        provider: providerSelect.value,
+        endpoint: endpointInput.value.trim(),
+        apiKey: apiKeyInput.value.trim(),
+        model: modelInput.value.trim(),
+        useServerProxy: proxyCheck ? proxyCheck.checked : false,
+        systemPrompt: promptTextarea ? promptTextarea.value.trim() : DEFAULT_SYSTEM_PROMPT,
+      };
+
+      saveAISettings(config);
+      showToast('AI Settings saved successfully!', 'success');
+    });
+  }
 
   // Export JSON
   document.getElementById('export-json-btn').addEventListener('click', async () => {

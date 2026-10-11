@@ -7,6 +7,8 @@ import { showToast } from '../toast.js';
 import { optimizeImage } from '../imageUtil.js';
 import { openCameraModal } from './cameraModal.js';
 import { openCropperModal } from './cropperModal.js';
+import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
+import { openAIReviewModal } from './aiReviewModal.js';
 
 /**
  * Render the add/edit item form.
@@ -64,6 +66,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                 <div class="image-preview-container">
                   <img class="image-preview" src="${existingImageUrl}" alt="Preview" id="image-preview" />
                   <div class="image-preview-actions">
+                    <button type="button" class="image-ai-btn" id="image-ai-btn" title="Identify component and autofill details with AI">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                      AI Autofill
+                    </button>
                     <button type="button" class="image-crop-btn" id="image-crop-btn" title="Crop image">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
                       Crop
@@ -91,6 +97,20 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                 </div>
               `}
             </div>
+            <!-- AI Photo Identification Banner -->
+            <div id="ai-photo-hint-banner" style="display: ${existingImageUrl ? 'flex' : 'none'}; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12)); border: 1px solid rgba(99,102,241,0.3); border-radius: var(--border-radius-md); padding: 8px 12px; margin-top: 8px; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">✨</span>
+                <div>
+                  <div style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary);">AI Component Recognition</div>
+                  <div style="font-size: 11px; color: var(--text-secondary);">Identify IC markings, specs, and autofill this form</div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-trigger-ai" style="padding: 4px 12px; font-size: var(--font-size-xs); background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; display: inline-flex; align-items: center; gap: 4px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                Auto-Fill with AI
+              </button>
+            </div>
           </div>
 
           <!-- Name -->
@@ -112,16 +132,33 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             </select>
           </div>
 
-          <!-- Quantity -->
+          <!-- Quantity Stepper -->
           <div class="form-group">
             <label class="form-label" for="item-quantity">Quantity <span class="required">*</span></label>
-            <input type="number" id="item-quantity" min="0" value="${item.quantity}" required />
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-secondary); border-radius: var(--border-radius-md); overflow: hidden; background: var(--bg-card);">
+              <button type="button" class="btn btn-secondary stepper-btn" id="btn-qty-minus" style="border-radius: 0; border: none; padding: 0 16px; font-size: 1.25rem; font-weight: 700; background: var(--bg-secondary); cursor: pointer;" aria-label="Decrease quantity">−</button>
+              <input type="number" id="item-quantity" min="0" value="${item.quantity}" required style="border: none; border-radius: 0; text-align: center; font-weight: 700; font-size: 1.05rem; background: transparent; width: 100%; box-shadow: none;" />
+              <button type="button" class="btn btn-secondary stepper-btn" id="btn-qty-plus" style="border-radius: 0; border: none; padding: 0 16px; font-size: 1.25rem; font-weight: 700; background: var(--bg-secondary); cursor: pointer;" aria-label="Increase quantity">+</button>
+            </div>
+            <!-- Quick preset counters -->
+            <div style="display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap;">
+              <span style="font-size: 11px; color: var(--text-tertiary);">Quick add:</span>
+              <button type="button" class="btn-qty-delta" data-delta="1" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">+1</button>
+              <button type="button" class="btn-qty-delta" data-delta="5" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">+5</button>
+              <button type="button" class="btn-qty-delta" data-delta="10" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">+10</button>
+              <button type="button" class="btn-qty-delta" data-delta="50" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">+50</button>
+              <button type="button" class="btn-qty-delta" data-delta="100" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">+100</button>
+            </div>
           </div>
 
-          <!-- Low Stock Threshold -->
+          <!-- Low Stock Threshold Stepper -->
           <div class="form-group">
             <label class="form-label" for="item-threshold">Low Stock Threshold</label>
-            <input type="number" id="item-threshold" min="0" value="${item.lowStockThreshold !== undefined && item.lowStockThreshold !== null ? item.lowStockThreshold : 0}" />
+            <div style="display: flex; align-items: stretch; border: 1px solid var(--border-secondary); border-radius: var(--border-radius-md); overflow: hidden; background: var(--bg-card);">
+              <button type="button" class="btn btn-secondary stepper-btn" id="btn-thresh-minus" style="border-radius: 0; border: none; padding: 0 16px; font-size: 1.25rem; font-weight: 700; background: var(--bg-secondary); cursor: pointer;" aria-label="Decrease threshold">−</button>
+              <input type="number" id="item-threshold" min="0" value="${item.lowStockThreshold !== undefined && item.lowStockThreshold !== null ? item.lowStockThreshold : 0}" style="border: none; border-radius: 0; text-align: center; font-weight: 700; font-size: 1.05rem; background: transparent; width: 100%; box-shadow: none;" />
+              <button type="button" class="btn btn-secondary stepper-btn" id="btn-thresh-plus" style="border-radius: 0; border: none; padding: 0 16px; font-size: 1.25rem; font-weight: 700; background: var(--bg-secondary); cursor: pointer;" aria-label="Increase threshold">+</button>
+            </div>
           </div>
 
           <!-- Part Number with Scanner Button -->
@@ -304,6 +341,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
         <div class="image-preview-container">
           <img class="image-preview" src="${url}" alt="Preview" id="image-preview" />
           <div class="image-preview-actions">
+            <button type="button" class="image-ai-btn" id="image-ai-btn" title="Identify component and autofill details with AI">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              AI Autofill
+            </button>
             <button type="button" class="image-crop-btn" id="image-crop-btn" title="Crop / reframe image">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
               Crop
@@ -314,6 +355,8 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           </div>
         </div>
       `;
+      const banner = document.getElementById('ai-photo-hint-banner');
+      if (banner) banner.style.display = 'flex';
       showToast('Photo framed and attached!', 'success');
     } catch (err) {
       showToast('Failed to process image: ' + err.message, 'error');
@@ -322,7 +365,14 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
   // Image actions (Crop & Remove buttons via event delegation)
   uploadArea.addEventListener('click', (e) => {
-    // 1. Re-crop existing image
+    // 1. AI Autofill action from preview overlay
+    if (e.target.closest('.image-ai-btn')) {
+      e.stopPropagation();
+      handleAIAutofill(e.target.closest('.image-ai-btn'));
+      return;
+    }
+
+    // 2. Re-crop existing image
     if (e.target.closest('.image-crop-btn')) {
       e.stopPropagation();
       const targetImage = imageFile || existingImageUrl;
@@ -337,13 +387,15 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       return;
     }
 
-    // 2. Remove image
+    // 3. Remove image
     if (e.target.closest('.image-remove-btn')) {
       e.stopPropagation();
       imageFile = null;
       removeImage = true;
       existingImageUrl = null;
       uploadArea.classList.remove('has-image');
+      const banner = document.getElementById('ai-photo-hint-banner');
+      if (banner) banner.style.display = 'none';
       uploadArea.innerHTML = `
         <input type="file" id="image-file-input" accept="image/*" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
         <input type="file" id="camera-file-input" accept="image/*" capture="environment" style="position:fixed; top:-1000px; left:-1000px; opacity:0; pointer-events:none;" />
@@ -367,8 +419,159 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     }
   });
 
+  // AI Autofill Button from Banner
+  const btnTriggerAI = document.getElementById('btn-trigger-ai');
+  if (btnTriggerAI) {
+    btnTriggerAI.addEventListener('click', () => {
+      handleAIAutofill(btnTriggerAI);
+    });
+  }
+
+  // AI Autofill Core Handler
+  async function handleAIAutofill(triggerBtn) {
+    const targetImage = imageFile || existingImageUrl;
+    if (!targetImage) {
+      showToast('Please take or upload a component photo first', 'warning');
+      return;
+    }
+
+    const aiSettings = getAISettings();
+    if (!aiSettings.enabled) {
+      showToast('AI recognition is disabled in Settings', 'warning');
+      return;
+    }
+
+    const originalHTML = triggerBtn ? triggerBtn.innerHTML : '';
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.innerHTML = `
+        <svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        Analyzing...
+      `;
+    }
+    showToast('AI is identifying markings & specifications...', 'info');
+
+    try {
+      const detected = await analyzeComponentImage({
+        image: targetImage,
+        categories: categories.map(c => c.name),
+        existingItem: {
+          name: document.getElementById('item-name')?.value,
+          partNumber: document.getElementById('item-partnum')?.value,
+          category: document.getElementById('item-category')?.value,
+        },
+      });
+
+      const previewSrc = typeof targetImage === 'string' ? targetImage : URL.createObjectURL(targetImage);
+
+      openAIReviewModal({
+        aiData: detected,
+        imageSrc: previewSrc,
+        categories,
+        existingItem: {
+          name: document.getElementById('item-name')?.value,
+          partNumber: document.getElementById('item-partnum')?.value,
+          category: document.getElementById('item-category')?.value,
+        },
+        onApply: (applied) => {
+          if (applied.name !== undefined) {
+            const el = document.getElementById('item-name');
+            if (el) el.value = applied.name;
+          }
+          if (applied.partNumber !== undefined) {
+            const el = document.getElementById('item-partnum');
+            if (el) el.value = applied.partNumber;
+          }
+          if (applied.category !== undefined) {
+            const el = document.getElementById('item-category');
+            if (el) el.value = applied.category;
+          }
+          if (applied.description !== undefined) {
+            const el = document.getElementById('item-desc');
+            if (el) el.value = applied.description;
+          }
+          if (applied.supplierInfo !== undefined) {
+            const el = document.getElementById('item-supplier');
+            if (el) el.value = applied.supplierInfo;
+          }
+          if (applied.datasheetUrl !== undefined) {
+            const el = document.getElementById('item-datasheet');
+            if (el) el.value = applied.datasheetUrl;
+          }
+          if (applied.notes !== undefined) {
+            const el = document.getElementById('item-notes');
+            if (el) {
+              const cur = el.value.trim();
+              el.value = cur ? `${cur}\n\n${applied.notes}` : applied.notes;
+            }
+          }
+          if (Array.isArray(applied.tags)) {
+            for (const t of applied.tags) {
+              addTag(t);
+            }
+          }
+          showToast('✨ AI details applied to form!', 'success');
+        },
+      });
+    } catch (err) {
+      console.error('AI Recognition Error:', err);
+      showToast(err.message || 'AI recognition failed', 'error');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.innerHTML = originalHTML;
+      }
+    }
+  }
+
   // Initial event bindings
   bindUploadEvents();
+
+  // ---- Quantity & Threshold Stepper Controls ----
+  const qtyInput = document.getElementById('item-quantity');
+  const btnQtyMinus = document.getElementById('btn-qty-minus');
+  const btnQtyPlus = document.getElementById('btn-qty-plus');
+
+  if (btnQtyMinus && qtyInput) {
+    btnQtyMinus.addEventListener('click', () => {
+      const current = parseInt(qtyInput.value, 10) || 0;
+      qtyInput.value = Math.max(0, current - 1);
+    });
+  }
+
+  if (btnQtyPlus && qtyInput) {
+    btnQtyPlus.addEventListener('click', () => {
+      const current = parseInt(qtyInput.value, 10) || 0;
+      qtyInput.value = current + 1;
+    });
+  }
+
+  // Quick preset buttons for quantity (+1, +5, +10, +50, +100)
+  container.querySelectorAll('.btn-qty-delta').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const delta = parseInt(btn.dataset.delta, 10) || 0;
+      const current = parseInt(qtyInput.value, 10) || 0;
+      qtyInput.value = Math.max(0, current + delta);
+    });
+  });
+
+  const threshInput = document.getElementById('item-threshold');
+  const btnThreshMinus = document.getElementById('btn-thresh-minus');
+  const btnThreshPlus = document.getElementById('btn-thresh-plus');
+
+  if (btnThreshMinus && threshInput) {
+    btnThreshMinus.addEventListener('click', () => {
+      const current = parseInt(threshInput.value, 10) || 0;
+      threshInput.value = Math.max(0, current - 1);
+    });
+  }
+
+  if (btnThreshPlus && threshInput) {
+    btnThreshPlus.addEventListener('click', () => {
+      const current = parseInt(threshInput.value, 10) || 0;
+      threshInput.value = current + 1;
+    });
+  }
 
   // ---- Tags ----
   const tagContainer = document.getElementById('tag-container');
