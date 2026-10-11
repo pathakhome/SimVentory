@@ -19,6 +19,7 @@ import {
 import { showToast } from '../toast.js';
 import {
   getAISettings,
+  fetchAISettings,
   saveAISettings,
   testAIConnection,
   PROVIDER_PRESETS,
@@ -27,10 +28,12 @@ import {
 } from '../services/aiService.js';
 
 export async function renderSettings(container, { refreshView }) {
-  const items = await getAllItems();
-  const categories = await getCategories();
-  const locations = await getLocations();
-  const aiSettings = getAISettings();
+  const [items, categories, locations, aiSettings] = await Promise.all([
+    getAllItems(),
+    getCategories(),
+    getLocations(),
+    fetchAISettings(),
+  ]);
   const currentPreset = PROVIDER_PRESETS[aiSettings.provider] || PROVIDER_PRESETS.custom;
 
   const EMOJI_PRESETS = ['🏷️', '🔌', '💡', '🧰', '📟', '🎛️', '🔬', '🪛', '📻', '🔋', '⚡', '🤖'];
@@ -598,7 +601,7 @@ export async function renderSettings(container, { refreshView }) {
   // Save AI Settings Form
   const aiForm = document.getElementById('ai-settings-form');
   if (aiForm) {
-    aiForm.addEventListener('submit', (e) => {
+    aiForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const config = {
         enabled: aiToggle ? aiToggle.checked : true,
@@ -610,8 +613,8 @@ export async function renderSettings(container, { refreshView }) {
         systemPrompt: promptTextarea ? promptTextarea.value.trim() : DEFAULT_SYSTEM_PROMPT,
       };
 
-      saveAISettings(config);
-      showToast('AI Settings saved successfully!', 'success');
+      await saveAISettings(config);
+      showToast('AI Settings saved & synced to server!', 'success');
     });
   }
 

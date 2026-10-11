@@ -9,6 +9,7 @@ import { renderItemForm } from './views/itemForm.js';
 import { renderSettings } from './views/settings.js';
 import { openItemDetailModal } from './views/itemModal.js';
 import { openScannerModal } from './views/scannerModal.js';
+import { fetchAISettings } from './services/aiService.js';
 
 // ---- State ----
 let currentView = 'dashboard';
@@ -156,4 +157,5 @@ document.addEventListener('keydown', (e) => {
 
 // ---- Init ----
 initTheme();
+fetchAISettings().catch(() => {});
 renderCurrentView();

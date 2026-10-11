@@ -149,11 +149,56 @@ export function getAISettings() {
 }
 
 /**
- * Save AI settings to localStorage.
+ * Fetch settings from the central server (/api/settings) and hydrate localStorage.
+ * If server has no settings yet but this client already has customized settings,
+ * it auto-seeds the server database so all other devices immediately benefit.
+ * @returns {Promise<Object>}
  */
-export function saveAISettings(settings) {
+export async function fetchAISettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.ai && typeof data.ai === 'object' && Object.keys(data.ai).length > 0) {
+        const serverMerged = { ...DEFAULT_AI_SETTINGS, ...data.ai };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverMerged));
+        return serverMerged;
+      } else {
+        // Server has no AI settings yet. If local has customized settings, sync them up!
+        const local = getAISettings();
+        if (local && (local.apiKey || local.model !== DEFAULT_AI_SETTINGS.model || local.provider !== DEFAULT_AI_SETTINGS.provider)) {
+          saveAISettings(local).catch(() => {});
+        }
+      }
+    }
+  } catch (err) {
+    // Server unreachable / offline — fallback to localStorage
+  }
+  return getAISettings();
+}
+
+/**
+ * Save AI settings to localStorage and persist to central server database.
+ * @param {Object} settings
+ * @returns {Promise<Object>}
+ */
+export async function saveAISettings(settings) {
   const merged = { ...getAISettings(), ...settings };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+  } catch (_) {}
+
+  // Sync to backend database on Raspberry Pi / central host
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai: merged }),
+    });
+  } catch (err) {
+    console.warn('[AI Service] Failed to sync settings to server:', err.message);
+  }
+
   return merged;
 }
 
@@ -325,6 +370,7 @@ export async function testAIConnection(customSettings = null) {
  * @returns {Promise<Object>} Extracted item details
  */
 export async function analyzeComponentImage({ image, categories = [], existingItem = null }) {
+  await fetchAISettings().catch(() => {});
   const settings = getAISettings();
   if (!settings.enabled) {
     throw new Error('AI recognition is disabled in Settings.');

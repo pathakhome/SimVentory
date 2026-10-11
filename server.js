@@ -35,7 +35,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 // Load or initialize in-memory database
-let db = { items: [], categories: [...DEFAULT_CATEGORIES], locations: [], history: [] };
+let db = { items: [], categories: [...DEFAULT_CATEGORIES], locations: [], history: [], settings: {} };
 
 function loadDatabase() {
   if (fs.existsSync(DB_FILE)) {
@@ -48,7 +48,8 @@ function loadDatabase() {
         db.categories = [...DEFAULT_CATEGORIES];
       }
       if (!Array.isArray(db.locations)) db.locations = [];
-      console.log(`[SimVentory] Loaded ${db.items.length} items, ${db.categories.length} categories, ${db.locations.length} locations.`);
+      if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+      console.log(`[SimVentory] Loaded ${db.items.length} items, ${db.categories.length} categories, ${db.locations.length} locations, and server settings.`);
     } catch (err) {
       console.error('[SimVentory] Error reading database file:', err.message);
     }
@@ -321,6 +322,7 @@ app.get('/api/export', (req, res) => {
     items: db.items,
     categories: db.categories,
     locations: db.locations,
+    settings: db.settings || {},
     images,
     history: db.history,
   });
@@ -343,6 +345,9 @@ app.post('/api/import', (req, res) => {
   db.categories = Array.isArray(data.categories) && data.categories.length > 0 ? data.categories : [...DEFAULT_CATEGORIES];
   db.locations = Array.isArray(data.locations) ? data.locations : [];
   db.history = Array.isArray(data.history) ? data.history : [];
+  if (data.settings && typeof data.settings === 'object') {
+    db.settings = data.settings;
+  }
 
   // Restore images from base64
   if (Array.isArray(data.images)) {
@@ -377,6 +382,26 @@ app.post('/api/clear', (req, res) => {
   }
   saveDatabase();
   res.json({ success: true });
+});
+
+// ---- Settings API ----
+app.get('/api/settings', (req, res) => {
+  res.json(db.settings || {});
+});
+
+app.post('/api/settings', (req, res) => {
+  const updates = req.body;
+  if (!updates || typeof updates !== 'object') {
+    return res.status(400).json({ error: 'Invalid settings object' });
+  }
+
+  db.settings = {
+    ...(db.settings || {}),
+    ...updates,
+  };
+
+  saveDatabase();
+  res.json({ success: true, settings: db.settings });
 });
 
 // AI Proxy endpoint (bypasses browser CORS for local Ollama, LM Studio, or external endpoints)
