@@ -95,6 +95,15 @@ Examine surface markings, laser etchings, silkscreen, pinout, and package styles
 Available categories in SimVentory: [{CATEGORIES}].
 Choose the closest matching category from that list.
 
+Available conditions in SimVentory: ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged'].
+Evaluate visual physical condition:
+- 'Packed': In manufacturer packaging, sealed anti-static bag, tape reel, or blister pack.
+- 'Unpacked New': Loose/unpacked but pristine, untinned/unsoldered clean pins.
+- 'Unpacked Used': Shows signs of workbench use, soldering, breadboard insertion, or wear.
+- 'Partially Working': Incomplete, missing pins/antenna, or marked as questionable.
+- 'Damaged': Visibly cracked, burned, corroded, or broken.
+Default to 'Unpacked New' if clean and unpackaged.
+
 CRITICAL INSTRUCTIONS FOR PART NUMBER / SKU:
 - Only extract and populate "partNumber" if an actual physical BARCODE, 2D Data Matrix, QR code, or printed Barcode/UPC/EAN/SKU label is clearly visible in the image.
 - If NO barcode or barcode number is present in the image, you MUST return an empty string ("") for "partNumber".
@@ -106,6 +115,7 @@ Required JSON schema:
   "name": "Concise, descriptive component name (e.g., 'NE555 Precision Timer IC' or 'ESP32-WROOM-32D Development Board')",
   "partNumber": "ONLY populate if a physical barcode, 2D matrix, QR code, or printed barcode SKU is visible in the photo. Otherwise return empty string ''",
   "category": "One category selected from the available categories list above",
+  "condition": "One condition selected strictly from: ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged']",
   "description": "Technical summary describing functionality, package type (e.g. DIP-8, SOP-8, SMD 0805, TO-220), pin pitch, operating voltages, or key features",
   "tags": ["array", "of", "4-8", "searchable", "tags", "e.g.", "timer", "analog", "DIP-8", "5V-15V"],
   "supplierInfo": "Primary manufacturer or distributor (e.g., Texas Instruments, Espressif, STMicroelectronics, Adafruit, SparkFun, Generic)",
@@ -117,6 +127,7 @@ export const STATIC_JSON_SCHEMA = {
   name: "string (Concise title e.g. 'NE555 Timer IC')",
   partNumber: "string (SKU/Barcode number — ONLY populated if a barcode/QR code is found, otherwise '')",
   category: "string (One matching category from vault)",
+  condition: "string (One condition: 'Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged')",
   description: "string (Technical summary, package, voltage ratings)",
   tags: "string[] (Searchable keywords e.g. ['timer', 'DIP-8', '5V-15V'])",
   supplierInfo: "string (Manufacturer or distributor)",
@@ -522,11 +533,15 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
 
   // Parse and sanitize JSON
   const parsed = parseAIResponseJSON(rawResponseText);
+  const VALID_CONDITIONS = ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged'];
+  const rawCond = (parsed.condition || '').trim();
+  const matchedCond = VALID_CONDITIONS.find(c => c.toLowerCase() === rawCond.toLowerCase()) || 'Unpacked New';
 
   return {
     name: (parsed.name || '').trim(),
     partNumber: (parsed.partNumber || '').trim(),
     category: matchCategory(parsed.category, categories),
+    condition: matchedCond,
     description: (parsed.description || '').trim(),
     tags: Array.isArray(parsed.tags) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
     supplierInfo: (parsed.supplierInfo || '').trim(),

@@ -114,7 +114,7 @@ export function getQueueSummary() {
 /**
  * Add multiple image files or blobs to the queue.
  */
-export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', defaultHint = '', defaultQuantity = 1, defaultThreshold = 0 } = {}) {
+export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', defaultCondition = 'Unpacked New', defaultHint = '', defaultQuantity = 1, defaultThreshold = 0 } = {}) {
   ensureLoaded();
   const newItems = [];
   const fileArray = Array.from(files);
@@ -140,6 +140,7 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
       status: 'queued', // queued | processing | ready | error
       error: null,
       location: defaultLocation,
+      condition: defaultCondition,
       hint: defaultHint,
       quantity: defaultQuantity,
       lowStockThreshold: defaultThreshold,
@@ -227,6 +228,7 @@ export async function processQueue() {
         liveItem.aiData = aiResult;
         liveItem.name = aiResult.name || 'Electronic Component';
         liveItem.category = aiResult.category || 'Other';
+        liveItem.condition = aiResult.condition || liveItem.condition || 'Unpacked New';
         liveItem.partNumber = aiResult.partNumber || '';
         liveItem.description = aiResult.description || '';
         liveItem.tags = Array.isArray(aiResult.tags) ? aiResult.tags : [];
@@ -302,6 +304,7 @@ export async function approveQueueItem(id, overrides = {}) {
     id: item.id,
     name,
     category: overrides.category || item.category || item.aiData?.category || 'Other',
+    condition: overrides.condition !== undefined ? overrides.condition : (item.condition || item.aiData?.condition || 'Unpacked New'),
     partNumber: overrides.partNumber !== undefined ? overrides.partNumber : (item.partNumber || item.aiData?.partNumber || ''),
     location,
     quantity: overrides.quantity !== undefined ? overrides.quantity : (item.quantity !== undefined ? item.quantity : 1),

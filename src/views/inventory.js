@@ -1,5 +1,5 @@
 import { getAllItems, getImage, saveItem, addHistory, getCategories, getLocations, saveLocation } from '../db.js';
-import { getCategoryColor, getCategoryIcon } from '../categories.js';
+import { getCategoryColor, getCategoryIcon, getConditionMeta, ITEM_CONDITIONS } from '../categories.js';
 import { showToast } from '../toast.js';
 
 let cachedImageURLs = {};
@@ -49,6 +49,10 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           <select class="toolbar-btn" id="inventory-location" style="appearance:none; cursor:pointer;" title="Filter by storage location">
             <option value="All" ${activeLocation === 'All' ? 'selected' : ''}>📍 All Locations</option>
             ${locations.map(loc => `<option value="${escapeHtml(loc.name)}" ${activeLocation === loc.name ? 'selected' : ''}>📍 ${escapeHtml(loc.name)}</option>`).join('')}
+          </select>
+          <select class="toolbar-btn" id="inventory-condition-filter" style="appearance:none; cursor:pointer;" title="Filter by condition">
+            <option value="All">✨ All Conditions</option>
+            ${ITEM_CONDITIONS.map(c => `<option value="${escapeHtml(c)}">${getConditionMeta(c).icon} ${escapeHtml(c)}</option>`).join('')}
           </select>
           <select class="toolbar-btn" id="inventory-sort" style="appearance:none; cursor:pointer;">
             <option value="name" ${sortBy === 'name' ? 'selected' : ''}>Name A-Z</option>
@@ -160,6 +164,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   const searchInput = document.getElementById('inventory-search');
   const sortSelect = document.getElementById('inventory-sort');
   const locationSelect = document.getElementById('inventory-location');
+  const conditionSelect = document.getElementById('inventory-condition-filter');
   const itemsContainer = document.getElementById('items-container');
 
   // Pre-load all images
@@ -176,6 +181,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     const query = searchInput.value.toLowerCase().trim();
     const category = localStorage.getItem('cv_filterCategory') || 'All';
     const location = locationSelect.value;
+    const condition = conditionSelect ? conditionSelect.value : 'All';
     const sort = sortSelect.value;
 
     // Filter by category
@@ -188,6 +194,11 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     // Filter by location
     if (location !== 'All') {
       filtered = filtered.filter(i => (i.location || '').toLowerCase() === location.toLowerCase());
+    }
+
+    // Filter by condition
+    if (condition !== 'All') {
+      filtered = filtered.filter(i => (i.condition || 'Unpacked New').toLowerCase() === condition.toLowerCase());
     }
 
     // Filter by search
@@ -247,6 +258,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
             <span></span>
             <span>Name</span>
             <span>Category</span>
+            <span>Condition</span>
             <span>Location</span>
             <span>Qty</span>
             <span>Fav</span>
@@ -266,6 +278,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     const imgSrc = cachedImageURLs[item.id] || '';
     const catColor = getCategoryColor(item.category, categories);
     const catIcon = getCategoryIcon(item.category, categories);
+    const condMeta = getConditionMeta(item.condition);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
     const isSelected = selectedItemIds.has(item.id);
 
@@ -281,8 +294,9 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           </button>
         </div>
         <div class="item-card-body">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
             <span class="item-card-category" style="background: ${catColor}20; color: ${catColor};">${catIcon} ${item.category}</span>
+            <span class="item-card-condition" style="background: ${condMeta.bg}; color: ${condMeta.color}; border: 1px solid ${condMeta.color}33; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px;">${condMeta.icon} ${escapeHtml(item.condition || 'Unpacked New')}</span>
           </div>
           <div class="item-card-name">${escapeHtml(item.name)}</div>
           ${item.location ? `
@@ -311,6 +325,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     const imgSrc = cachedImageURLs[item.id] || '';
     const catColor = getCategoryColor(item.category, categories);
     const catIcon = getCategoryIcon(item.category, categories);
+    const condMeta = getConditionMeta(item.condition);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
     const isSelected = selectedItemIds.has(item.id);
 
@@ -320,6 +335,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
         ${imgSrc ? `<img class="item-list-img" src="${imgSrc}" alt="${escapeHtml(item.name)}"/>` : `<div class="item-list-img" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>`}
         <span class="item-list-name">${escapeHtml(item.name)}</span>
         <span class="item-list-category" style="color: ${catColor};">${catIcon} ${item.category}</span>
+        <span class="item-list-condition" style="background: ${condMeta.bg}; color: ${condMeta.color}; border: 1px solid ${condMeta.color}33; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 99px; white-space: nowrap;">${condMeta.icon} ${escapeHtml(item.condition || 'Unpacked New')}</span>
         <span class="item-list-location" style="font-size:var(--font-size-base); font-weight:700; color:var(--text-primary);">${item.location ? `📍 ${escapeHtml(item.location)}` : '<span style="color:var(--text-tertiary);font-weight:normal;">—</span>'}</span>
         <span class="item-list-qty item-qty-value ${qtyClass}">${item.quantity}</span>
         <span class="item-list-fav ${item.isFavorite ? 'active' : ''}" data-fav-id="${item.id}">
@@ -583,6 +599,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   searchInput.addEventListener('input', renderItems);
   sortSelect.addEventListener('change', renderItems);
   locationSelect.addEventListener('change', renderItems);
+  conditionSelect?.addEventListener('change', renderItems);
 
   // Category filter pills
   document.getElementById('filter-pills').addEventListener('click', (e) => {

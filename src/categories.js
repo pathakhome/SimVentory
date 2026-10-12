@@ -43,6 +43,39 @@ export function getCategoryIcon(name, customList = null) {
 }
 
 /**
+ * Component Condition definitions and metadata.
+ */
+export const ITEM_CONDITIONS = [
+  'Unpacked New',
+  'Unpacked Used',
+  'Partially Working',
+  'Packed',
+  'Damaged',
+];
+
+export const DEFAULT_CONDITION = 'Unpacked New';
+
+/**
+ * Get visual metadata (icon, color, background) for an item condition.
+ */
+export function getConditionMeta(condition) {
+  switch (condition) {
+    case 'Unpacked New':
+      return { label: 'Unpacked New', icon: '✨', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' };
+    case 'Unpacked Used':
+      return { label: 'Unpacked Used', icon: '🔄', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' };
+    case 'Partially Working':
+      return { label: 'Partially Working', icon: '⚠️', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' };
+    case 'Packed':
+      return { label: 'Packed', icon: '📦', color: '#818cf8', bg: 'rgba(129, 140, 248, 0.15)' };
+    case 'Damaged':
+      return { label: 'Damaged', icon: '✕', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' };
+    default:
+      return { label: condition || 'Unpacked New', icon: '✨', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' };
+  }
+}
+
+/**
  * Default item structure.
  */
 export function createDefaultItem() {
@@ -51,6 +84,7 @@ export function createDefaultItem() {
     name: '',
     description: '',
     category: 'Other',
+    condition: DEFAULT_CONDITION,
     tags: [],
     quantity: 0,
     lowStockThreshold: 0,

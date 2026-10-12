@@ -2,7 +2,7 @@
  * Add / Edit Item form view.
  */
 import { generateId, saveItem, getItem, getAllItems, saveImage, getImage, deleteImage, addHistory, getCategories, saveCategory, getLocations, saveLocation } from '../db.js';
-import { createDefaultItem } from '../categories.js';
+import { createDefaultItem, ITEM_CONDITIONS, getConditionMeta, DEFAULT_CONDITION } from '../categories.js';
 import { showToast } from '../toast.js';
 import { optimizeImage } from '../imageUtil.js';
 import { openCameraModal } from './cameraModal.js';
@@ -135,6 +135,14 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             </label>
             <select id="item-category">
               ${categories.map(c => `<option value="${escapeAttr(c.name)}" ${item.category === c.name ? 'selected' : ''}>${c.icon || '📦'} ${c.name}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- Condition -->
+          <div class="form-group">
+            <label class="form-label" for="item-condition">Condition</label>
+            <select id="item-condition">
+              ${ITEM_CONDITIONS.map(cond => `<option value="${escapeAttr(cond)}" ${(item.condition || DEFAULT_CONDITION) === cond ? 'selected' : ''}>${getConditionMeta(cond).icon} ${escapeHtml(cond)}</option>`).join('')}
             </select>
           </div>
 
@@ -503,6 +511,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             const el = document.getElementById('item-category');
             if (el) el.value = applied.category;
           }
+          if (applied.condition !== undefined) {
+            const el = document.getElementById('item-condition');
+            if (el) el.value = applied.condition;
+          }
           if (applied.description !== undefined) {
             const el = document.getElementById('item-desc');
             if (el) el.value = applied.description;
@@ -800,6 +812,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       name,
       description: document.getElementById('item-desc').value.trim(),
       category: document.getElementById('item-category').value,
+      condition: document.getElementById('item-condition').value || DEFAULT_CONDITION,
       tags,
       quantity,
       lowStockThreshold,

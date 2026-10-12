@@ -1,8 +1,4 @@
-/**
- * AI Review & Acceptance Modal
- * Allows users to inspect, cherry-pick with checkboxes, and edit
- * AI-generated component details before autofilling into the form.
- */
+import { ITEM_CONDITIONS, getConditionMeta } from '../categories.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -155,6 +151,24 @@ export function openAIReviewModal({
               ${categories.map(c => `
                 <option value="${escapeAttr(c.name)}" ${c.name.toLowerCase() === (aiData.category || '').toLowerCase() ? 'selected' : ''}>
                   ${c.icon || '📦'} ${escapeHtml(c.name)}
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- Field: Condition -->
+          <div class="ai-field-card" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer;">
+                <input type="checkbox" class="ai-field-check" data-field="condition" checked style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
+                Condition
+              </label>
+              ${existingItem?.condition ? `<span style="font-size: 10px; color: var(--text-tertiary);">Current: ${escapeHtml(existingItem.condition)}</span>` : ''}
+            </div>
+            <select id="ai-val-condition" class="form-input" style="width: 100%; font-size: var(--font-size-sm);">
+              ${ITEM_CONDITIONS.map(c => `
+                <option value="${escapeAttr(c)}" ${(aiData.condition || 'Unpacked New') === c ? 'selected' : ''}>
+                  ${getConditionMeta(c).icon} ${escapeHtml(c)}
                 </option>
               `).join('')}
             </select>

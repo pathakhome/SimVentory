@@ -2,7 +2,7 @@
  * Item Detail Modal renderer.
  */
 import { getItem, getImage, getHistory, deleteItem, saveItem, addHistory, getCategories, saveLocation } from '../db.js';
-import { getCategoryColor, getCategoryIcon } from '../categories.js';
+import { getCategoryColor, getCategoryIcon, getConditionMeta } from '../categories.js';
 import { showToast } from '../toast.js';
 import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
 import { openAIReviewModal } from './aiReviewModal.js';
@@ -24,6 +24,7 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
   const history = await getHistory(itemId);
   const catColor = getCategoryColor(item.category);
   const catIcon = getCategoryIcon(item.category);
+  const condMeta = getConditionMeta(item.condition);
 
   const modal = document.getElementById('item-modal');
   const modalContent = document.getElementById('item-modal-content');
@@ -50,6 +51,14 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
         <div class="modal-detail-item">
           <div class="modal-detail-label">Category</div>
           <div class="modal-detail-value" style="color: ${catColor};">${catIcon} ${item.category}</div>
+        </div>
+        <div class="modal-detail-item">
+          <div class="modal-detail-label">Condition</div>
+          <div class="modal-detail-value">
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:99px; font-size:11.5px; font-weight:600; background:${condMeta.bg}; color:${condMeta.color}; border:1px solid ${condMeta.color}33;">
+              <span>${condMeta.icon}</span> ${escapeHtml(item.condition || 'Unpacked New')}
+            </span>
+          </div>
         </div>
         <div class="modal-detail-item">
           <div class="modal-detail-label">Quantity</div>

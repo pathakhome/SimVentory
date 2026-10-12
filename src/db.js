@@ -452,10 +452,11 @@ export async function importData(data) {
  */
 export async function exportCSV() {
   const items = await getAllItems();
-  const headers = ['Name', 'Category', 'Quantity', 'Low Stock Threshold', 'Part Number', 'Location', 'Description', 'Tags', 'Supplier Info', 'Datasheet URL', 'Favorite', 'Notes', 'Created At'];
+  const headers = ['Name', 'Category', 'Condition', 'Quantity', 'Low Stock Threshold', 'Part Number', 'Location', 'Description', 'Tags', 'Supplier Info', 'Datasheet URL', 'Favorite', 'Notes', 'Created At'];
   const rows = items.map(item => [
     item.name,
     item.category,
+    item.condition || 'Unpacked New',
     item.quantity,
     item.lowStockThreshold,
     item.partNumber || '',
@@ -730,6 +731,7 @@ export async function seedSampleData() {
       name: 'ESP32-WROOM-32',
       description: 'Dual-core 240MHz microcontroller with built-in Wi-Fi and Bluetooth BLE.',
       category: 'Modules',
+      condition: 'Packed',
       tags: ['WiFi', 'Bluetooth', '3.3V', 'Microcontroller'],
       quantity: 5,
       lowStockThreshold: 2,
@@ -748,6 +750,7 @@ export async function seedSampleData() {
       name: 'DHT22 Temperature & Humidity Sensor',
       description: 'High precision digital sensor module for ambient humidity and temperature sensing.',
       category: 'Sensors',
+      condition: 'Unpacked New',
       tags: ['Temperature', 'Humidity', 'Digital', '1-Wire'],
       quantity: 3,
       lowStockThreshold: 2,
@@ -766,6 +769,7 @@ export async function seedSampleData() {
       name: 'NE555P Precision Timer IC',
       description: 'Industry standard monolithic timing circuit capable of producing accurate time delays or oscillation.',
       category: 'ICs',
+      condition: 'Unpacked New',
       tags: ['Timer', 'DIP-8', 'Oscillator', 'Analog'],
       quantity: 14,
       lowStockThreshold: 5,
@@ -784,6 +788,7 @@ export async function seedSampleData() {
       name: 'ATmega328P-PU Microcontroller',
       description: '8-bit AVR RISC microcontroller with 32KB flash in 28-pin DIP package. The heart of the Arduino Uno.',
       category: 'ICs',
+      condition: 'Unpacked Used',
       tags: ['AVR', 'DIP-28', '16MHz', 'Arduino'],
       quantity: 1,
       lowStockThreshold: 2,
@@ -802,6 +807,7 @@ export async function seedSampleData() {
       name: 'MTS-102 SPDT Mini Toggle Switch',
       description: 'Miniature 3-pin ON-ON single pole double throw toggle switch with threaded bushing and hex nut.',
       category: 'Switches',
+      condition: 'Packed',
       tags: ['Toggle', 'SPDT', '3-Pin', 'Panel-mount'],
       quantity: 8,
       lowStockThreshold: 3,
@@ -820,6 +826,7 @@ export async function seedSampleData() {
       name: 'SG90 Micro Servo 9g',
       description: 'Tiny 9g analog servo motor with 180° rotation angle, nylon gears, and 3-pin connector.',
       category: 'Motors',
+      condition: 'Unpacked Used',
       tags: ['Servo', 'PWM', '5V', 'Robotics'],
       quantity: 2,
       lowStockThreshold: 2,
@@ -838,6 +845,7 @@ export async function seedSampleData() {
       name: '10kΩ 1/4W Metal Film Resistors',
       description: 'Precision 1% tolerance axial lead metal film resistors for pull-up/pull-down and voltage dividers.',
       category: 'Resistors',
+      condition: 'Packed',
       tags: ['10k', 'Through-hole', '1%', 'Pull-up'],
       quantity: 85,
       lowStockThreshold: 20,
@@ -856,6 +864,7 @@ export async function seedSampleData() {
       name: '16x2 I2C Character LCD Module',
       description: '16 columns x 2 rows alphanumeric liquid crystal display with PCF8574 I2C adapter backpack.',
       category: 'Modules',
+      condition: 'Unpacked New',
       tags: ['I2C', 'Display', 'HD44780', '5V'],
       quantity: 0,
       lowStockThreshold: 1,

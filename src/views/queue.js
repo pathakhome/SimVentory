@@ -4,6 +4,7 @@
  */
 
 import { getLocations, getCategories, getImage } from '../db.js';
+import { ITEM_CONDITIONS, getConditionMeta, DEFAULT_CONDITION } from '../categories.js';
 import {
   getQueueItems,
   getQueueSummary,
@@ -110,6 +111,15 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                 <datalist id="batch-locations-list">
                   ${locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
                 </datalist>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); padding: 6px 12px; border-radius: var(--border-radius-md);">
+                <label for="queue-batch-condition" style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); white-space: nowrap;">
+                  ✨ Condition:
+                </label>
+                <select id="queue-batch-condition" style="font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);">
+                  ${ITEM_CONDITIONS.map(c => `<option value="${escapeAttr(c)}">${getConditionMeta(c).icon} ${escapeHtml(c)}</option>`).join('')}
+                </select>
               </div>
 
               <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); padding: 6px 12px; border-radius: var(--border-radius-md);">
@@ -266,6 +276,14 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                 <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Storage Location *</label>
                 <input type="text" class="queue-item-location" data-id="${item.id}" value="${escapeAttr(item.location || '')}" placeholder="Required" required style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
               </div>
+              <div>
+                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Condition</label>
+                <select class="queue-item-condition" data-id="${item.id}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);">
+                  ${ITEM_CONDITIONS.map(c => `
+                    <option value="${escapeAttr(c)}" ${(item.condition || item.aiData?.condition || DEFAULT_CONDITION) === c ? 'selected' : ''}>${getConditionMeta(c).icon} ${escapeHtml(c)}</option>
+                  `).join('')}
+                </select>
+              </div>
               <div style="display: flex; gap: 8px;">
                 <div style="flex: 1;">
                   <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Qty</label>
@@ -334,9 +352,11 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     const handleFiles = async (files) => {
       if (!files || files.length === 0) return;
       const defaultLoc = (batchLocInput?.value || '').trim() || 'Unsorted';
+      const batchCondInput = document.getElementById('queue-batch-condition');
+      const defaultCond = batchCondInput?.value || DEFAULT_CONDITION;
       const defaultHint = (batchHintInput?.value || '').trim();
       showToast(`Adding ${files.length} photo${files.length !== 1 ? 's' : ''} to AI queue...`, 'info');
-      await addFilesToQueue(files, { defaultLocation: defaultLoc, defaultHint, defaultQuantity: 1, defaultThreshold: 0 });
+      await addFilesToQueue(files, { defaultLocation: defaultLoc, defaultCondition: defaultCond, defaultHint, defaultQuantity: 1, defaultThreshold: 0 });
     };
 
     if (dropzone) {
@@ -394,6 +414,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
         const nameVal = card.querySelector('.queue-item-name')?.value.trim();
         const locVal = card.querySelector('.queue-item-location')?.value.trim();
         const catVal = card.querySelector('.queue-item-cat')?.value;
+        const condVal = card.querySelector('.queue-item-condition')?.value;
         const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10);
         const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
 
@@ -402,6 +423,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             ...(nameVal ? { name: nameVal } : {}),
             ...(locVal ? { location: locVal } : {}),
             ...(catVal ? { category: catVal } : {}),
+            ...(condVal ? { condition: condVal } : {}),
             ...(Number.isFinite(qtyVal) ? { quantity: qtyVal } : {}),
             partNumber: partVal || '',
           });
@@ -441,6 +463,12 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
       });
     });
 
+    container.querySelectorAll('.queue-item-condition').forEach(select => {
+      select.addEventListener('change', (e) => {
+        updateQueueItem(e.target.dataset.id, { condition: e.target.value });
+      });
+    });
+
     container.querySelectorAll('.queue-item-qty').forEach(input => {
       input.addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10);
@@ -462,6 +490,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
         const nameVal = card.querySelector('.queue-item-name')?.value.trim();
         const locVal = card.querySelector('.queue-item-location')?.value.trim();
         const catVal = card.querySelector('.queue-item-cat')?.value;
+        const condVal = card.querySelector('.queue-item-condition')?.value;
         const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10) || 1;
         const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
 
@@ -480,6 +509,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             name: nameVal,
             location: locVal,
             category: catVal,
+            condition: condVal,
             quantity: qtyVal,
             partNumber: partVal,
           });
