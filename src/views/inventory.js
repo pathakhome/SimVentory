@@ -92,7 +92,15 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <button type="button" class="btn btn-primary btn-sm" id="btn-batch-move" style="background: linear-gradient(135deg, #6366f1, #4f46e5); border: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(99,102,241,0.3);">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Move to Location
+            Move
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-batch-category" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(139,92,246,0.3);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            Change Category
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-batch-condition" style="background: linear-gradient(135deg, #0ea5e9, #0284c7); border: none; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(14,165,233,0.3);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Change Condition
           </button>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-batch-select-all">
             Select All Filtered
@@ -149,6 +157,114 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
             <button type="button" class="btn btn-secondary" id="batch-move-cancel-btn">Cancel</button>
             <button type="button" class="btn btn-primary" id="batch-move-confirm-btn" style="background: linear-gradient(135deg, #6366f1, #4f46e5); border: none;">
               Confirm Move
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Category Modal Dialog -->
+      <div id="batch-category-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 480px; border-radius: var(--border-radius-lg); overflow: hidden;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-primary);">
+            <h2 class="modal-title" style="font-size: var(--font-size-lg); font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>🏷️</span> Change Category
+            </h2>
+            <button class="modal-close" id="batch-category-modal-close" aria-label="Close" style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: 18px;">✕</button>
+          </div>
+          <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Updating category for <strong id="batch-category-count-text" style="color: var(--accent-primary);">0</strong> selected components.
+            </div>
+            
+            <div>
+              <label for="batch-category-select" style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary); display: block; margin-bottom: 6px;">
+                New Category <span class="required" style="color: var(--accent-danger);">*</span>
+              </label>
+              <select id="batch-category-select" required style="width: 100%; padding: 8px 12px; font-size: var(--font-size-sm); border-radius: var(--border-radius-md); border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);">
+                <option value="">-- Choose Category --</option>
+                ${categories.map(c => `<option value="${escapeHtml(c.name)}">${c.icon || '📦'} ${escapeHtml(c.name)}</option>`).join('')}
+              </select>
+            </div>
+
+            <div>
+              <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 6px;">Or click a category chip:</span>
+              <div id="batch-category-chips-container" style="display: flex; gap: 6px; flex-wrap: wrap; max-height: 100px; overflow-y: auto;">
+                ${categories.map(c => `
+                  <button type="button" class="btn-batch-cat-chip" data-cat="${escapeAttr(c.name)}" style="font-size: 11.5px; padding: 4px 10px; border-radius: 99px; background: var(--bg-secondary); border: 1px solid var(--border-secondary); color: var(--text-secondary); cursor: pointer; transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 4px;">
+                    <span>${c.icon || '📦'}</span> <span>${escapeHtml(c.name)}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div>
+              <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 6px;">Items to update:</span>
+              <div id="batch-category-items-preview" style="max-height: 120px; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary);">
+            <button type="button" class="btn btn-secondary" id="batch-category-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="batch-category-confirm-btn" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none;">
+              Apply Category
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Condition Modal Dialog -->
+      <div id="batch-condition-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 480px; border-radius: var(--border-radius-lg); overflow: hidden;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-primary);">
+            <h2 class="modal-title" style="font-size: var(--font-size-lg); font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>✨</span> Change Condition
+            </h2>
+            <button class="modal-close" id="batch-condition-modal-close" aria-label="Close" style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: 18px;">✕</button>
+          </div>
+          <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Updating condition for <strong id="batch-condition-count-text" style="color: var(--accent-primary);">0</strong> selected components.
+            </div>
+            
+            <div>
+              <label for="batch-condition-select" style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-primary); display: block; margin-bottom: 6px;">
+                New Condition <span class="required" style="color: var(--accent-danger);">*</span>
+              </label>
+              <select id="batch-condition-select" required style="width: 100%; padding: 8px 12px; font-size: var(--font-size-sm); border-radius: var(--border-radius-md); border: 1px solid var(--border-secondary); background: var(--bg-card); color: var(--text-primary);">
+                <option value="">-- Choose Condition --</option>
+                ${ITEM_CONDITIONS.map(c => {
+                  const meta = getConditionMeta(c);
+                  return `<option value="${escapeHtml(c)}">${meta.icon} ${escapeHtml(c)}</option>`;
+                }).join('')}
+              </select>
+            </div>
+
+            <div>
+              <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 6px;">Or click a condition badge:</span>
+              <div id="batch-condition-chips-container" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                ${ITEM_CONDITIONS.map(c => {
+                  const meta = getConditionMeta(c);
+                  return `
+                    <button type="button" class="btn-batch-cond-chip" data-cond="${escapeAttr(c)}" style="font-size: 11.5px; padding: 5px 12px; border-radius: 99px; background: ${meta.bg}; border: 1px solid ${meta.border}; color: ${meta.color}; font-weight: 600; cursor: pointer; transition: all 0.15s ease; display: inline-flex; align-items: center; gap: 5px;">
+                      <span>${meta.icon}</span> <span>${escapeHtml(c)}</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <div>
+              <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 6px;">Items to update:</span>
+              <div id="batch-condition-items-preview" style="max-height: 120px; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary);">
+            <button type="button" class="btn btn-secondary" id="batch-condition-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="batch-condition-confirm-btn" style="background: linear-gradient(135deg, #0ea5e9, #0284c7); border: none;">
+              Apply Condition
             </button>
           </div>
         </div>
@@ -468,6 +584,20 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     });
   }
 
+  const btnBatchCategory = document.getElementById('btn-batch-category');
+  if (btnBatchCategory) {
+    btnBatchCategory.addEventListener('click', () => {
+      openBatchCategoryModal();
+    });
+  }
+
+  const btnBatchCondition = document.getElementById('btn-batch-condition');
+  if (btnBatchCondition) {
+    btnBatchCondition.addEventListener('click', () => {
+      openBatchConditionModal();
+    });
+  }
+
   const btnBatchSelectAll = document.getElementById('btn-batch-select-all');
   if (btnBatchSelectAll) {
     btnBatchSelectAll.addEventListener('click', () => {
@@ -527,6 +657,9 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 
   document.getElementById('batch-move-modal-close')?.addEventListener('click', closeBatchMoveModal);
   document.getElementById('batch-move-cancel-btn')?.addEventListener('click', closeBatchMoveModal);
+  document.getElementById('batch-move-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'batch-move-modal') closeBatchMoveModal();
+  });
 
   // Location chip click inside modal
   container.querySelectorAll('.btn-location-chip').forEach(chip => {
@@ -571,13 +704,230 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       closeBatchMoveModal();
       showToast(`✓ Successfully moved ${count} component${count !== 1 ? 's' : ''} to "${newLocation}"!`, 'success');
 
-      // Refresh locations list
+      // Refresh locations list & items
       locations = await getLocations();
+      items = await getAllItems();
       updateLocationSelect();
       renderItems();
     } catch (err) {
       console.error('Batch move error:', err);
       showToast('Failed to move components: ' + err.message, 'error');
+    }
+  });
+
+  // Batch Category Modal Handling
+  function openBatchCategoryModal() {
+    if (selectedItemIds.size === 0) return;
+    const modal = document.getElementById('batch-category-modal');
+    if (!modal) return;
+
+    const countText = document.getElementById('batch-category-count-text');
+    if (countText) countText.textContent = selectedItemIds.size;
+
+    const select = document.getElementById('batch-category-select');
+    if (select) select.value = '';
+
+    container.querySelectorAll('.btn-batch-cat-chip').forEach(c => {
+      c.style.borderColor = 'var(--border-secondary)';
+      c.style.background = 'var(--bg-secondary)';
+    });
+
+    const previewContainer = document.getElementById('batch-category-items-preview');
+    if (previewContainer) {
+      const selectedItems = items.filter(i => selectedItemIds.has(i.id));
+      previewContainer.innerHTML = selectedItems.map(item => {
+        const catColor = getCategoryColor(item.category, categories);
+        const catIcon = getCategoryIcon(item.category, categories);
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span style="font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(item.name)}</span>
+            <span style="font-size:11px; color:${catColor}; white-space:nowrap;">${catIcon} ${escapeHtml(item.category || 'Uncategorized')}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      select?.focus();
+    }, 60);
+  }
+
+  function closeBatchCategoryModal() {
+    const modal = document.getElementById('batch-category-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  document.getElementById('batch-category-modal-close')?.addEventListener('click', closeBatchCategoryModal);
+  document.getElementById('batch-category-cancel-btn')?.addEventListener('click', closeBatchCategoryModal);
+  document.getElementById('batch-category-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'batch-category-modal') closeBatchCategoryModal();
+  });
+
+  // Category chip click inside modal
+  container.querySelectorAll('.btn-batch-cat-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const cat = chip.dataset.cat;
+      const select = document.getElementById('batch-category-select');
+      if (select) {
+        select.value = cat;
+      }
+      container.querySelectorAll('.btn-batch-cat-chip').forEach(c => {
+        const isMatch = c.dataset.cat === cat;
+        c.style.borderColor = isMatch ? 'var(--accent-primary)' : 'var(--border-secondary)';
+        c.style.background = isMatch ? 'var(--accent-primary-dim, rgba(99,102,241,0.15))' : 'var(--bg-secondary)';
+      });
+    });
+  });
+
+  document.getElementById('batch-category-select')?.addEventListener('change', (e) => {
+    const val = e.target.value;
+    container.querySelectorAll('.btn-batch-cat-chip').forEach(c => {
+      const isMatch = c.dataset.cat === val;
+      c.style.borderColor = isMatch ? 'var(--accent-primary)' : 'var(--border-secondary)';
+      c.style.background = isMatch ? 'var(--accent-primary-dim, rgba(99,102,241,0.15))' : 'var(--bg-secondary)';
+    });
+  });
+
+  // Confirm category change button
+  document.getElementById('batch-category-confirm-btn')?.addEventListener('click', async () => {
+    const select = document.getElementById('batch-category-select');
+    const newCategory = (select?.value || '').trim();
+
+    if (!newCategory) {
+      showToast('Please select a category', 'warning');
+      select?.focus();
+      return;
+    }
+
+    const count = selectedItemIds.size;
+    showToast(`Updating category for ${count} component${count !== 1 ? 's' : ''} to "${newCategory}"...`, 'info');
+
+    try {
+      for (const id of selectedItemIds) {
+        const item = items.find(i => i.id === id);
+        if (item) {
+          item.category = newCategory;
+          item.updatedAt = new Date().toISOString();
+          await saveItem(item);
+          await addHistory(item.id, 'updated', 0);
+        }
+      }
+
+      selectedItemIds.clear();
+      closeBatchCategoryModal();
+      showToast(`✓ Successfully updated category to "${newCategory}" for ${count} component${count !== 1 ? 's' : ''}!`, 'success');
+
+      items = await getAllItems();
+      renderItems();
+    } catch (err) {
+      console.error('Batch category update error:', err);
+      showToast('Failed to update category: ' + err.message, 'error');
+    }
+  });
+
+  // Batch Condition Modal Handling
+  function openBatchConditionModal() {
+    if (selectedItemIds.size === 0) return;
+    const modal = document.getElementById('batch-condition-modal');
+    if (!modal) return;
+
+    const countText = document.getElementById('batch-condition-count-text');
+    if (countText) countText.textContent = selectedItemIds.size;
+
+    const select = document.getElementById('batch-condition-select');
+    if (select) select.value = '';
+
+    container.querySelectorAll('.btn-batch-cond-chip').forEach(c => {
+      c.style.boxShadow = 'none';
+    });
+
+    const previewContainer = document.getElementById('batch-condition-items-preview');
+    if (previewContainer) {
+      const selectedItems = items.filter(i => selectedItemIds.has(i.id));
+      previewContainer.innerHTML = selectedItems.map(item => {
+        const meta = getConditionMeta(item.condition);
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span style="font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(item.name)}</span>
+            <span style="font-size:11px; padding:2px 7px; border-radius:99px; background:${meta.bg}; color:${meta.color}; border:1px solid ${meta.border}; font-weight:600; white-space:nowrap;">${meta.icon} ${escapeHtml(item.condition || 'Unpacked New')}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      select?.focus();
+    }, 60);
+  }
+
+  function closeBatchConditionModal() {
+    const modal = document.getElementById('batch-condition-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  document.getElementById('batch-condition-modal-close')?.addEventListener('click', closeBatchConditionModal);
+  document.getElementById('batch-condition-cancel-btn')?.addEventListener('click', closeBatchConditionModal);
+  document.getElementById('batch-condition-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'batch-condition-modal') closeBatchConditionModal();
+  });
+
+  // Condition chip click inside modal
+  container.querySelectorAll('.btn-batch-cond-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const cond = chip.dataset.cond;
+      const select = document.getElementById('batch-condition-select');
+      if (select) {
+        select.value = cond;
+      }
+      container.querySelectorAll('.btn-batch-cond-chip').forEach(c => {
+        c.style.boxShadow = c.dataset.cond === cond ? '0 0 0 2px var(--accent-primary)' : 'none';
+      });
+    });
+  });
+
+  document.getElementById('batch-condition-select')?.addEventListener('change', (e) => {
+    const val = e.target.value;
+    container.querySelectorAll('.btn-batch-cond-chip').forEach(c => {
+      c.style.boxShadow = c.dataset.cond === val ? '0 0 0 2px var(--accent-primary)' : 'none';
+    });
+  });
+
+  // Confirm condition change button
+  document.getElementById('batch-condition-confirm-btn')?.addEventListener('click', async () => {
+    const select = document.getElementById('batch-condition-select');
+    const newCondition = (select?.value || '').trim();
+
+    if (!newCondition) {
+      showToast('Please select a condition', 'warning');
+      select?.focus();
+      return;
+    }
+
+    const count = selectedItemIds.size;
+    showToast(`Updating condition for ${count} component${count !== 1 ? 's' : ''} to "${newCondition}"...`, 'info');
+
+    try {
+      for (const id of selectedItemIds) {
+        const item = items.find(i => i.id === id);
+        if (item) {
+          item.condition = newCondition;
+          item.updatedAt = new Date().toISOString();
+          await saveItem(item);
+          await addHistory(item.id, 'updated', 0);
+        }
+      }
+
+      selectedItemIds.clear();
+      closeBatchConditionModal();
+      showToast(`✓ Successfully updated condition to "${newCondition}" for ${count} component${count !== 1 ? 's' : ''}!`, 'success');
+
+      items = await getAllItems();
+      renderItems();
+    } catch (err) {
+      console.error('Batch condition update error:', err);
+      showToast('Failed to update condition: ' + err.message, 'error');
     }
   });
 
