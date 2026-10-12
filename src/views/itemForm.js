@@ -497,6 +497,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           name: document.getElementById('item-name')?.value,
           partNumber: document.getElementById('item-partnum')?.value,
           category: document.getElementById('item-category')?.value,
+          quantity: document.getElementById('item-quantity')?.value,
         },
         onApply: (applied) => {
           if (applied.name !== undefined) {
@@ -514,6 +515,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           if (applied.condition !== undefined) {
             const el = document.getElementById('item-condition');
             if (el) el.value = applied.condition;
+          }
+          if (applied.quantity !== undefined) {
+            const el = document.getElementById('item-quantity');
+            if (el) el.value = applied.quantity;
           }
           if (applied.description !== undefined) {
             const el = document.getElementById('item-desc');

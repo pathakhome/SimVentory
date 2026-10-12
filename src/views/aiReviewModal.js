@@ -174,6 +174,21 @@ export function openAIReviewModal({
             </select>
           </div>
 
+          <!-- Field: Quantity -->
+          <div class="ai-field-card" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer;">
+                <input type="checkbox" class="ai-field-check" data-field="quantity" checked style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
+                Estimated Quantity
+              </label>
+              ${existingItem?.quantity !== undefined && existingItem?.quantity !== null ? `<span style="font-size: 10px; color: var(--text-tertiary);">Current: ${escapeHtml(existingItem.quantity)}</span>` : ''}
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="number" id="ai-val-quantity" min="1" value="${aiData.estimatedQuantity || aiData.quantity || 1}" class="form-input" style="width: 110px; font-size: var(--font-size-sm); font-weight: 600;" />
+              <span style="font-size: 11px; color: var(--text-tertiary);">Estimated visible component unit count</span>
+            </div>
+          </div>
+
           <!-- Field: Description -->
           <div class="ai-field-card" style="background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -316,6 +331,12 @@ export function openAIReviewModal({
       if (field === 'tags') {
         const rawTags = (document.getElementById('ai-val-tags')?.value || '');
         selectedData.tags = rawTags.split(',').map(s => s.trim()).filter(Boolean);
+      } else if (field === 'quantity') {
+        const input = document.getElementById('ai-val-quantity');
+        const num = parseInt(input?.value, 10);
+        const qty = Number.isFinite(num) && num > 0 ? num : 1;
+        selectedData.quantity = qty;
+        selectedData.estimatedQuantity = qty;
       } else {
         const input = document.getElementById(`ai-val-${field}`);
         if (input) {

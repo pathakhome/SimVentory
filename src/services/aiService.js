@@ -109,6 +109,11 @@ CRITICAL INSTRUCTIONS FOR PART NUMBER / SKU:
 - If NO barcode or barcode number is present in the image, you MUST return an empty string ("") for "partNumber".
 - Do NOT put IC markings (like NE555, ESP32, STM32, etc.) into "partNumber" unless they are accompanying a scannable barcode label. Put IC markings, package codes, and component titles in "name" and "description" instead.
 
+ESTIMATED QUANTITY:
+- Count or estimate the number of component units visible in the photograph (e.g. 1 for a single IC/board/module, 5 for five loose resistors or ICs, 10 for a tape strip or pack of 10, or a quantity printed on the manufacturer packaging label).
+- If only 1 unit is shown or the count cannot be determined with confidence, default to 1.
+- Always output an integer >= 1 in "estimatedQuantity".
+
 Respond ONLY with a valid, raw JSON object (no explanations, no markdown formatting outside JSON).
 Required JSON schema:
 {
@@ -116,6 +121,7 @@ Required JSON schema:
   "partNumber": "ONLY populate if a physical barcode, 2D matrix, QR code, or printed barcode SKU is visible in the photo. Otherwise return empty string ''",
   "category": "One category selected from the available categories list above",
   "condition": "One condition selected strictly from: ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged']",
+  "estimatedQuantity": 1,
   "description": "Technical summary describing functionality, package type (e.g. DIP-8, SOP-8, SMD 0805, TO-220), pin pitch, operating voltages, or key features",
   "tags": ["array", "of", "4-8", "searchable", "tags", "e.g.", "timer", "analog", "DIP-8", "5V-15V"],
   "supplierInfo": "Primary manufacturer or distributor (e.g., Texas Instruments, Espressif, STMicroelectronics, Adafruit, SparkFun, Generic)",
@@ -128,6 +134,7 @@ export const STATIC_JSON_SCHEMA = {
   partNumber: "string (SKU/Barcode number — ONLY populated if a barcode/QR code is found, otherwise '')",
   category: "string (One matching category from vault)",
   condition: "string (One condition: 'Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged')",
+  estimatedQuantity: "number (Count of visible units or quantity printed on packaging, integer >= 1, default 1)",
   description: "string (Technical summary, package, voltage ratings)",
   tags: "string[] (Searchable keywords e.g. ['timer', 'DIP-8', '5V-15V'])",
   supplierInfo: "string (Manufacturer or distributor)",
@@ -441,9 +448,13 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
   }
 
   const promptTemplate = (systemPrompt && systemPrompt.trim()) ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
-  const baseInstructions = promptTemplate.includes('{CATEGORIES}')
+  let baseInstructions = promptTemplate.includes('{CATEGORIES}')
     ? promptTemplate.replace('{CATEGORIES}', categoryListStr)
     : `${promptTemplate}\n\nAvailable categories in SimVentory: [${categoryListStr}]. Choose the closest matching category.`;
+
+  if (!baseInstructions.toLowerCase().includes('estimatedquantity')) {
+    baseInstructions += `\n\nESTIMATED QUANTITY: Count the visible component units in the image and return an integer >= 1 in "estimatedQuantity" (default 1).`;
+  }
 
   const systemInstructions = baseInstructions + hintSnippet;
 
@@ -537,11 +548,23 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
   const rawCond = (parsed.condition || '').trim();
   const matchedCond = VALID_CONDITIONS.find(c => c.toLowerCase() === rawCond.toLowerCase()) || 'Unpacked New';
 
+  // Parse estimated quantity (integer >= 1, defaults to 1)
+  let estimatedQuantity = 1;
+  const rawQty = parsed.estimatedQuantity !== undefined ? parsed.estimatedQuantity : parsed.quantity;
+  if (rawQty !== undefined && rawQty !== null) {
+    const num = parseInt(rawQty, 10);
+    if (!isNaN(num) && num > 0) {
+      estimatedQuantity = num;
+    }
+  }
+
   return {
     name: (parsed.name || '').trim(),
     partNumber: (parsed.partNumber || '').trim(),
     category: matchCategory(parsed.category, categories),
     condition: matchedCond,
+    estimatedQuantity,
+    quantity: estimatedQuantity,
     description: (parsed.description || '').trim(),
     tags: Array.isArray(parsed.tags) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
     supplierInfo: (parsed.supplierInfo || '').trim(),

@@ -229,6 +229,7 @@ export async function processQueue() {
         liveItem.name = aiResult.name || 'Electronic Component';
         liveItem.category = aiResult.category || 'Other';
         liveItem.condition = aiResult.condition || liveItem.condition || 'Unpacked New';
+        liveItem.quantity = (aiResult.estimatedQuantity || aiResult.quantity) || liveItem.quantity || 1;
         liveItem.partNumber = aiResult.partNumber || '';
         liveItem.description = aiResult.description || '';
         liveItem.tags = Array.isArray(aiResult.tags) ? aiResult.tags : [];
