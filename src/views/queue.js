@@ -55,7 +55,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     container.innerHTML = `
       <div class="fade-in">
         <!-- View Header -->
-        <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
           <div>
             <h1>AI Intake Queue</h1>
             <p>Upload photos in bulk, process with AI in the background, and review before adding to inventory</p>
@@ -74,6 +74,18 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
               </button>
             ` : ''}
           </div>
+        </div>
+
+        <!-- Workflow Guide Banner -->
+        <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.22); border-radius: var(--border-radius-md); padding: 10px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+          <div style="font-size: var(--font-size-xs); color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px;">💡</span>
+            <span><strong>Intake Workflow:</strong> Upload photos ➔ AI auto-extracts component specs in background ➔ Review & edit staged cards below ➔ Click <strong>"Approve & Add"</strong> to commit them to your <strong>Main Inventory</strong>.</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-goto-inventory" style="font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+            <span>Main Inventory</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
         </div>
 
         <!-- Bulk Upload Dropzone & Batch Defaults -->
@@ -366,10 +378,36 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
       cameraInput.value = '';
     });
 
+    // Navigate to Inventory view
+    document.getElementById('btn-goto-inventory')?.addEventListener('click', () => {
+      if (navigateTo) navigateTo('inventory');
+    });
+
     // Bulk approve all ready
     document.getElementById('btn-approve-all')?.addEventListener('click', async () => {
       const summary = getQueueSummary();
       if (summary.ready === 0) return;
+
+      // Sync any edited fields from DOM cards first
+      container.querySelectorAll('.queue-card').forEach(card => {
+        const id = card.dataset.itemId;
+        const nameVal = card.querySelector('.queue-item-name')?.value.trim();
+        const locVal = card.querySelector('.queue-item-location')?.value.trim();
+        const catVal = card.querySelector('.queue-item-cat')?.value;
+        const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10);
+        const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
+
+        if (id) {
+          updateQueueItem(id, {
+            ...(nameVal ? { name: nameVal } : {}),
+            ...(locVal ? { location: locVal } : {}),
+            ...(catVal ? { category: catVal } : {}),
+            ...(Number.isFinite(qtyVal) ? { quantity: qtyVal } : {}),
+            partNumber: partVal || '',
+          });
+        }
+      });
+
       showToast(`Approving ${summary.ready} components into vault...`, 'info');
       const approved = await approveAllReady();
       showToast(`✨ ${approved.length} components added to inventory!`, 'success');
@@ -382,6 +420,38 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
         clearQueue();
         showToast('Queue cleared', 'info');
       }
+    });
+
+    // Real-time synchronization of card inputs so edits aren't lost
+    container.querySelectorAll('.queue-item-name').forEach(input => {
+      input.addEventListener('input', (e) => {
+        updateQueueItem(e.target.dataset.id, { name: e.target.value.trim() });
+      });
+    });
+
+    container.querySelectorAll('.queue-item-cat').forEach(select => {
+      select.addEventListener('change', (e) => {
+        updateQueueItem(e.target.dataset.id, { category: e.target.value });
+      });
+    });
+
+    container.querySelectorAll('.queue-item-location').forEach(input => {
+      input.addEventListener('input', (e) => {
+        updateQueueItem(e.target.dataset.id, { location: e.target.value.trim() });
+      });
+    });
+
+    container.querySelectorAll('.queue-item-qty').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (Number.isFinite(val)) updateQueueItem(e.target.dataset.id, { quantity: val });
+      });
+    });
+
+    container.querySelectorAll('.queue-item-partnum').forEach(input => {
+      input.addEventListener('input', (e) => {
+        updateQueueItem(e.target.dataset.id, { partNumber: e.target.value.trim() });
+      });
     });
 
     // Delegate Card Actions

@@ -12,76 +12,47 @@ const QUEUE_STORAGE_KEY = 'simventory_ai_intake_queue';
 
 let queue = [];
 let isProcessing = false;
+let isLoaded = false;
 let listeners = new Set();
 
 /**
- * Load queue from localStorage on module init or state sync.
+ * Ensure queue is loaded from localStorage.
+ * Only parses from disk once on initialization or when explicitly forced.
  * Auto-recovers any zombie 'processing' items back to 'queued' if not actively processing.
  */
-function loadQueue() {
+function ensureLoaded(force = false) {
+  if (isLoaded && !force && isProcessing) {
+    return;
+  }
   try {
     const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
-    queue = raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
 
-    // Zombie check: If in-memory isProcessing is false, any item marked 'processing'
-    // is a zombie from an aborted session or page refresh. Reset it to 'queued'.
     if (!isProcessing) {
       let changed = false;
-      for (const item of queue) {
+      for (const item of parsed) {
         if (item.status === 'processing') {
           item.status = 'queued';
           changed = true;
         }
       }
       if (changed) {
-        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(parsed));
       }
     }
-  } catch (_) {
-    queue = [];
-  }
-}
-
-/**
- * Persist queue metadata to localStorage and notify listeners
- */
-function persistQueue() {
-  try {
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+    queue = parsed;
+    isLoaded = true;
   } catch (e) {
-    console.error('[QueueService] Failed to persist queue:', e);
+    console.error('[QueueService] Error reading queue from storage:', e);
+    queue = [];
+    isLoaded = true;
   }
-  notifyListeners();
 }
 
 /**
- * Subscribe to queue changes
+ * Calculate current summary statistics from in-memory queue.
  */
-export function subscribeQueue(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-function notifyListeners() {
-  const summary = getQueueSummary();
-  listeners.forEach(fn => {
-    try { fn(queue, summary); } catch (e) { console.error(e); }
-  });
-}
-
-/**
- * Get current queue items
- */
-export function getQueueItems() {
-  loadQueue();
-  return [...queue];
-}
-
-/**
- * Get summary stats for current queue
- */
-export function getQueueSummary() {
-  loadQueue();
+function calculateSummary() {
   const total = queue.length;
   const queued = queue.filter(i => i.status === 'queued').length;
   const processing = queue.filter(i => i.status === 'processing').length;
@@ -91,10 +62,60 @@ export function getQueueSummary() {
 }
 
 /**
- * Add multiple image files or blobs to the queue
+ * Persist in-memory queue metadata to localStorage and notify all listeners.
+ */
+function persistQueue() {
+  try {
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+  } catch (e) {
+    console.error('[QueueService] Failed to persist queue to localStorage:', e);
+  }
+  notifyListeners();
+}
+
+/**
+ * Notify all registered queue listeners with current queue and summary.
+ */
+function notifyListeners() {
+  const summary = calculateSummary();
+  listeners.forEach(fn => {
+    try {
+      fn(queue, summary);
+    } catch (e) {
+      console.error('[QueueService] Error in queue listener:', e);
+    }
+  });
+}
+
+/**
+ * Subscribe to live queue changes.
+ */
+export function subscribeQueue(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+/**
+ * Get current queue items.
+ */
+export function getQueueItems() {
+  ensureLoaded();
+  return [...queue];
+}
+
+/**
+ * Get summary stats for current queue.
+ */
+export function getQueueSummary() {
+  ensureLoaded();
+  return calculateSummary();
+}
+
+/**
+ * Add multiple image files or blobs to the queue.
  */
 export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', defaultHint = '', defaultQuantity = 1, defaultThreshold = 0 } = {}) {
-  loadQueue();
+  ensureLoaded();
   const newItems = [];
   const fileArray = Array.from(files);
 
@@ -109,7 +130,7 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
       console.warn('[QueueService] Image optimization failed, using original file:', optErr);
     }
 
-    // Save optimized image directly to storage under item ID
+    // Save optimized image directly to IndexedDB under item ID
     await saveImage(id, optimizedBlob);
 
     const item = {
@@ -138,21 +159,21 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
 }
 
 /**
- * Start or resume background processing of queued items
+ * Start or resume background processing of queued items.
  */
 export async function processQueue() {
   if (isProcessing) return;
-  loadQueue();
+  ensureLoaded();
 
-  // Safety check: recover any zombie 'processing' items to 'queued'
+  // Safety check: recover any zombie 'processing' items to 'queued' before starting
   for (const item of queue) {
     if (item.status === 'processing') {
       item.status = 'queued';
     }
   }
 
-  const nextItem = queue.find(i => i.status === 'queued');
-  if (!nextItem) {
+  const hasQueued = queue.some(i => i.status === 'queued');
+  if (!hasQueued) {
     isProcessing = false;
     notifyListeners();
     return;
@@ -166,15 +187,17 @@ export async function processQueue() {
     const catNames = categories.map(c => c.name);
 
     while (true) {
-      const current = queue.find(i => i.status === 'queued');
-      if (!current) break;
+      // Find the next queued item in live queue
+      const target = queue.find(i => i.status === 'queued');
+      if (!target) break;
 
-      current.status = 'processing';
-      current.error = null;
+      const itemId = target.id;
+      target.status = 'processing';
+      target.error = null;
       persistQueue();
 
       try {
-        const imageBlob = await getImage(current.id);
+        const imageBlob = await getImage(itemId);
         if (!imageBlob) {
           throw new Error('Image data not found in storage.');
         }
@@ -188,32 +211,35 @@ export async function processQueue() {
           analyzeComponentImage({
             image: imageBlob,
             categories: catNames,
-            hint: current.hint || '',
+            hint: target.hint || '',
           }),
           timeoutPromise,
         ]);
 
-        // Verify the item wasn't discarded or queue cleared during the API request
-        if (!queue.some(i => i.id === current.id)) {
+        // Look up the live item in queue by ID
+        const liveItem = queue.find(i => i.id === itemId);
+        if (!liveItem) {
+          // Item was discarded or queue cleared while AI was running
           continue;
         }
 
-        current.status = 'ready';
-        current.aiData = aiResult;
-        current.name = aiResult.name || 'Electronic Component';
-        current.category = aiResult.category || 'Other';
-        current.partNumber = aiResult.partNumber || '';
-        current.description = aiResult.description || '';
-        current.tags = aiResult.tags || [];
-        current.notes = aiResult.notes || '';
-        current.supplierInfo = aiResult.supplierInfo || '';
-        current.datasheetUrl = aiResult.datasheetUrl || '';
+        liveItem.status = 'ready';
+        liveItem.aiData = aiResult;
+        liveItem.name = aiResult.name || 'Electronic Component';
+        liveItem.category = aiResult.category || 'Other';
+        liveItem.partNumber = aiResult.partNumber || '';
+        liveItem.description = aiResult.description || '';
+        liveItem.tags = Array.isArray(aiResult.tags) ? aiResult.tags : [];
+        liveItem.notes = aiResult.notes || '';
+        liveItem.supplierInfo = aiResult.supplierInfo || '';
+        liveItem.datasheetUrl = aiResult.datasheetUrl || '';
+        liveItem.error = null;
       } catch (err) {
-        console.error(`[QueueService] Error processing item ${current.id}:`, err);
-        // Verify item is still in queue before setting error state
-        if (queue.some(i => i.id === current.id)) {
-          current.status = 'error';
-          current.error = err.message || 'AI recognition failed';
+        console.error(`[QueueService] Error processing item ${itemId}:`, err);
+        const liveItem = queue.find(i => i.id === itemId);
+        if (liveItem) {
+          liveItem.status = 'error';
+          liveItem.error = err.message || 'AI recognition failed';
         }
       }
 
@@ -228,10 +254,10 @@ export async function processQueue() {
 }
 
 /**
- * Retry a failed queue item
+ * Retry a failed queue item.
  */
 export async function retryQueueItem(id) {
-  loadQueue();
+  ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (item) {
     item.status = 'queued';
@@ -242,10 +268,10 @@ export async function retryQueueItem(id) {
 }
 
 /**
- * Update editable fields of a queued item
+ * Update editable fields of a queued item.
  */
 export function updateQueueItem(id, updates) {
-  loadQueue();
+  ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (item) {
     Object.assign(item, updates);
@@ -254,10 +280,10 @@ export function updateQueueItem(id, updates) {
 }
 
 /**
- * Approve a single queued item into the main inventory
+ * Approve a single queued item into the main inventory.
  */
 export async function approveQueueItem(id, overrides = {}) {
-  loadQueue();
+  ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (!item) throw new Error('Queue item not found');
 
@@ -268,7 +294,9 @@ export async function approveQueueItem(id, overrides = {}) {
   if (!location) throw new Error('Storage Location is required.');
 
   // Auto-save location if new
-  try { await saveLocation({ name: location }); } catch (_) {}
+  try {
+    await saveLocation({ name: location });
+  } catch (_) {}
 
   const finalItem = {
     id: item.id,
@@ -302,10 +330,10 @@ export async function approveQueueItem(id, overrides = {}) {
 }
 
 /**
- * Approve all items in the queue that have status === 'ready'
+ * Approve all items in the queue that have status === 'ready'.
  */
 export async function approveAllReady(globalLocation = null) {
-  loadQueue();
+  ensureLoaded();
   const readyItems = queue.filter(i => i.status === 'ready');
   const approved = [];
 
@@ -323,10 +351,10 @@ export async function approveAllReady(globalLocation = null) {
 }
 
 /**
- * Discard / delete a single item from the queue
+ * Discard / delete a single item from the queue.
  */
 export function discardQueueItem(id) {
-  loadQueue();
+  ensureLoaded();
   queue = queue.filter(i => i.id !== id);
   if (queue.length === 0) {
     isProcessing = false;
@@ -335,7 +363,7 @@ export function discardQueueItem(id) {
 }
 
 /**
- * Clear all items from the queue
+ * Clear all items from the queue.
  */
 export function clearQueue() {
   isProcessing = false;
@@ -344,7 +372,7 @@ export function clearQueue() {
 }
 
 // Initial load & auto-resume queued items
-loadQueue();
+ensureLoaded();
 if (queue.some(i => i.status === 'queued')) {
   processQueue();
 }
