@@ -162,22 +162,51 @@ app.post('/api/categories', (req, res) => {
   if (!cat || !cat.name) return res.status(400).json({ error: 'Category name is required' });
 
   const cleanName = cat.name.trim();
-  const index = db.categories.findIndex(c => c.name.toLowerCase() === cleanName.toLowerCase());
-  const entry = {
-    name: cleanName,
-    color: cat.color || '#818cf8',
-    icon: cat.icon || '📦',
-    isDefault: false,
-  };
+  const oldName = (cat.oldName || '').trim();
 
-  if (index >= 0) {
-    db.categories[index] = { ...db.categories[index], ...entry };
+  // If renaming an existing category
+  if (oldName && oldName.toLowerCase() !== cleanName.toLowerCase()) {
+    const oldIndex = db.categories.findIndex(c => c.name.toLowerCase() === oldName.toLowerCase());
+    if (oldIndex >= 0) {
+      db.categories[oldIndex] = {
+        ...db.categories[oldIndex],
+        name: cleanName,
+        color: cat.color || db.categories[oldIndex].color || '#818cf8',
+        icon: cat.icon || db.categories[oldIndex].icon || '📦',
+      };
+    } else {
+      db.categories.push({
+        name: cleanName,
+        color: cat.color || '#818cf8',
+        icon: cat.icon || '📦',
+        isDefault: false,
+      });
+    }
+
+    // Cascade rename to items
+    db.items.forEach(i => {
+      if ((i.category || '').toLowerCase() === oldName.toLowerCase()) {
+        i.category = cleanName;
+      }
+    });
   } else {
-    db.categories.push(entry);
+    const index = db.categories.findIndex(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    const entry = {
+      name: cleanName,
+      color: cat.color || '#818cf8',
+      icon: cat.icon || '📦',
+      isDefault: index >= 0 ? !!db.categories[index].isDefault : false,
+    };
+
+    if (index >= 0) {
+      db.categories[index] = { ...db.categories[index], ...entry };
+    } else {
+      db.categories.push(entry);
+    }
   }
 
   saveDatabase();
-  res.json({ success: true, category: entry, categories: db.categories });
+  res.json({ success: true, categories: db.categories });
 });
 
 app.delete('/api/categories/:name', (req, res) => {
@@ -194,14 +223,18 @@ app.delete('/api/categories/:name', (req, res) => {
 // ---- Storage Locations API ----
 app.get('/api/locations', (req, res) => {
   const locMap = new Map();
-  (db.locations || []).forEach(l => locMap.set(l.name.toLowerCase(), l));
+  (db.locations || []).forEach(l => locMap.set(l.name.toLowerCase(), {
+    name: l.name,
+    description: l.description || '',
+    color: l.color || '#6366f1',
+  }));
 
   // Merge any locations currently assigned to items
   db.items.forEach(i => {
     if (i.location && i.location.trim()) {
       const locName = i.location.trim();
       if (!locMap.has(locName.toLowerCase())) {
-        locMap.set(locName.toLowerCase(), { name: locName, description: '' });
+        locMap.set(locName.toLowerCase(), { name: locName, description: '', color: '#6366f1' });
       }
     }
   });
@@ -214,20 +247,39 @@ app.post('/api/locations', (req, res) => {
   if (!loc || !loc.name) return res.status(400).json({ error: 'Location name is required' });
 
   const cleanName = loc.name.trim();
-  const index = (db.locations || []).findIndex(l => l.name.toLowerCase() === cleanName.toLowerCase());
-  const entry = {
-    name: cleanName,
-    description: (loc.description || '').trim(),
-  };
+  const oldName = (loc.oldName || '').trim();
+  const color = (loc.color || '#6366f1').trim();
+  const description = (loc.description || '').trim();
 
-  if (index >= 0) {
-    db.locations[index] = entry;
+  // If renaming an existing location
+  if (oldName && oldName.toLowerCase() !== cleanName.toLowerCase()) {
+    const oldIndex = (db.locations || []).findIndex(l => l.name.toLowerCase() === oldName.toLowerCase());
+    const entry = { name: cleanName, description, color };
+    if (oldIndex >= 0) {
+      db.locations[oldIndex] = entry;
+    } else {
+      db.locations.push(entry);
+    }
+
+    // Cascade rename to items
+    db.items.forEach(i => {
+      if ((i.location || '').toLowerCase() === oldName.toLowerCase()) {
+        i.location = cleanName;
+      }
+    });
   } else {
-    db.locations.push(entry);
+    const index = (db.locations || []).findIndex(l => l.name.toLowerCase() === cleanName.toLowerCase());
+    const entry = { name: cleanName, description, color };
+
+    if (index >= 0) {
+      db.locations[index] = entry;
+    } else {
+      db.locations.push(entry);
+    }
   }
 
   saveDatabase();
-  res.json({ success: true, location: entry, locations: db.locations });
+  res.json({ success: true, locations: db.locations });
 });
 
 app.delete('/api/locations/:name', (req, res) => {

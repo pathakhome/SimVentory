@@ -271,13 +271,24 @@ export async function retryQueueItem(id) {
 
 /**
  * Update editable fields of a queued item.
+ * @param {string} id
+ * @param {Object} updates
+ * @param {Object} options { silent: boolean }
  */
-export function updateQueueItem(id, updates) {
+export function updateQueueItem(id, updates, { silent = false } = {}) {
   ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (item) {
     Object.assign(item, updates);
-    persistQueue();
+    if (silent) {
+      try {
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+      } catch (e) {
+        console.error('[QueueService] Error silently saving queue:', e);
+      }
+    } else {
+      persistQueue();
+    }
   }
 }
 

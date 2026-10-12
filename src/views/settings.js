@@ -16,6 +16,7 @@ import {
   saveLocation,
   deleteLocation,
 } from '../db.js';
+import { LOCATION_COLOR_PRESETS, DEFAULT_LOCATION_COLOR } from '../categories.js';
 import { showToast } from '../toast.js';
 import {
   getAISettings,
@@ -103,11 +104,16 @@ export async function renderSettings(container, { refreshView }) {
                   <span style="font-size:11px; color:var(--text-tertiary);">${cat.isDefault ? 'Default' : 'Custom'}</span>
                 </div>
               </div>
-              ${!cat.isDefault && cat.name.toLowerCase() !== 'other' ? `
-                <button type="button" class="btn-delete-cat" data-name="${escapeAttr(cat.name)}" title="Delete category" style="background:none; border:none; color:var(--text-tertiary); cursor:pointer; padding:4px; border-radius:4px; display:flex; align-items:center;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <button type="button" class="btn-edit-cat" data-name="${escapeAttr(cat.name)}" data-icon="${escapeAttr(cat.icon || '📦')}" data-color="${escapeAttr(cat.color || '#818cf8')}" title="Edit category" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:4px; border-radius:4px; display:flex; align-items:center;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-              ` : ''}
+                ${!cat.isDefault && cat.name.toLowerCase() !== 'other' ? `
+                  <button type="button" class="btn-delete-cat" data-name="${escapeAttr(cat.name)}" title="Delete category" style="background:none; border:none; color:var(--text-tertiary); cursor:pointer; padding:4px; border-radius:4px; display:flex; align-items:center;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                ` : ''}
+              </div>
             </div>
           `).join('')}
         </div>
@@ -119,7 +125,7 @@ export async function renderSettings(container, { refreshView }) {
           <div>
             <h3>📍 Custom Storage Locations</h3>
             <p style="color:var(--text-secondary); font-size:var(--font-size-sm); margin-top:2px;">
-              Keep track of which drawer, bin, tackle box, or shelf contains your electronics.
+              Keep track of which drawer, bin, tackle box, or shelf contains your electronics. Assign colors for instant visual identification.
             </p>
           </div>
         </div>
@@ -138,11 +144,23 @@ export async function renderSettings(container, { refreshView }) {
               <label class="form-label" style="font-size:var(--font-size-xs);">Description / Notes (Optional)</label>
               <input type="text" id="new-loc-desc" placeholder="e.g., Top acrylic organizer, ESD foam" style="width:100%;" />
             </div>
+            <div style="width:65px;">
+              <label class="form-label" style="font-size:var(--font-size-xs);">Color</label>
+              <input type="color" id="new-loc-color" value="${DEFAULT_LOCATION_COLOR}" style="width:100%; height:40px; border-radius:6px; cursor:pointer; padding:2px;" />
+            </div>
             <button type="submit" class="btn btn-primary btn-sm" style="height:40px;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Add Location
             </button>
           </form>
+
+          <!-- Color quick presets for location -->
+          <div style="display:flex; gap:6px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+            <span style="font-size:var(--font-size-xs); color:var(--text-tertiary);">Quick Colors:</span>
+            ${LOCATION_COLOR_PRESETS.map(c => `
+              <button type="button" class="btn-preset-loc-color" data-color="${c}" style="width:20px; height:20px; border-radius:50%; background:${c}; border:2px solid var(--border-secondary); cursor:pointer; padding:0;"></button>
+            `).join('')}
+          </div>
         </div>
 
         <!-- Locations List -->
@@ -154,16 +172,24 @@ export async function renderSettings(container, { refreshView }) {
           <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:10px;" id="locations-list">
             ${locations.map(loc => `
               <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); border:1px solid var(--border-primary); border-radius:8px; padding:10px 14px;">
-                <div style="min-width:0;">
-                  <div style="font-weight:600; font-size:var(--font-size-sm); display:flex; align-items:center; gap:6px;">
-                    <span>📍</span>
-                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(loc.name)}</span>
+                <div style="min-width:0; display:flex; align-items:center; gap:10px;">
+                  <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${loc.color || '#6366f1'}; flex-shrink:0; box-shadow:0 0 6px ${loc.color || '#6366f1'}66;"></span>
+                  <div style="min-width:0;">
+                    <div style="font-weight:600; font-size:var(--font-size-sm); display:flex; align-items:center; gap:6px;">
+                      <span>📍</span>
+                      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(loc.name)}</span>
+                    </div>
+                    ${loc.description ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(loc.description)}</div>` : ''}
                   </div>
-                  ${loc.description ? `<div style="font-size:11px; color:var(--text-secondary); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(loc.description)}</div>` : ''}
                 </div>
-                <button type="button" class="btn-delete-loc" data-name="${escapeAttr(loc.name)}" title="Delete location" style="background:none; border:none; color:var(--text-tertiary); cursor:pointer; padding:4px; border-radius:4px; display:flex; align-items:center;">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <button type="button" class="btn-edit-loc" data-name="${escapeAttr(loc.name)}" data-desc="${escapeAttr(loc.description || '')}" data-color="${escapeAttr(loc.color || '#6366f1')}" title="Edit location" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:4px; border-radius:4px; display:flex; align-items:center;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button type="button" class="btn-delete-loc" data-name="${escapeAttr(loc.name)}" title="Delete location" style="background:none; border:none; color:var(--text-tertiary); cursor:pointer; padding:4px; border-radius:4px; display:flex; align-items:center;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </div>
               </div>
             `).join('')}
           </div>
@@ -465,6 +491,93 @@ export async function renderSettings(container, { refreshView }) {
           </div>
         </div>
       </div>
+
+      <!-- Edit Category Modal Dialog -->
+      <div id="edit-cat-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 440px; border-radius: var(--border-radius-lg); overflow: hidden;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-primary);">
+            <h2 class="modal-title" style="font-size: var(--font-size-md); font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>✏️</span> Edit Category
+            </h2>
+            <button type="button" class="modal-close" id="edit-cat-close-btn" style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: 18px;">✕</button>
+          </div>
+          <form id="edit-category-form">
+            <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+              <input type="hidden" id="edit-cat-old-name" />
+              <div>
+                <label class="form-label" style="font-size: var(--font-size-xs);">Category Name *</label>
+                <input type="text" id="edit-cat-name" required style="width: 100%;" />
+                <span style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px; display: block;">Renaming will automatically update all items using this category.</span>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: flex-end;">
+                <div style="width: 80px;">
+                  <label class="form-label" style="font-size: var(--font-size-xs);">Icon</label>
+                  <input type="text" id="edit-cat-icon" maxlength="4" style="width: 100%; text-align: center; font-size: 1.2rem;" />
+                </div>
+                <div style="width: 70px;">
+                  <label class="form-label" style="font-size: var(--font-size-xs);">Color</label>
+                  <input type="color" id="edit-cat-color" style="width: 100%; height: 40px; border-radius: 6px; cursor: pointer; padding: 2px;" />
+                </div>
+              </div>
+              <!-- Emoji quick presets -->
+              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <span style="font-size: 11px; color: var(--text-tertiary);">Quick Icons:</span>
+                ${EMOJI_PRESETS.map(e => `
+                  <button type="button" class="btn-edit-preset-emoji" data-emoji="${e}" style="background: var(--bg-card); border: 1px solid var(--border-secondary); border-radius: 4px; padding: 2px 6px; font-size: 13px; cursor: pointer;">${e}</button>
+                `).join('')}
+              </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary);">
+              <button type="button" class="btn btn-secondary" id="edit-cat-cancel-btn">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Edit Storage Location Modal Dialog -->
+      <div id="edit-loc-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width: 440px; border-radius: var(--border-radius-lg); overflow: hidden;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-primary);">
+            <h2 class="modal-title" style="font-size: var(--font-size-md); font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>✏️</span> Edit Storage Location
+            </h2>
+            <button type="button" class="modal-close" id="edit-loc-close-btn" style="background: none; border: none; cursor: pointer; color: var(--text-tertiary); font-size: 18px;">✕</button>
+          </div>
+          <form id="edit-location-form">
+            <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+              <input type="hidden" id="edit-loc-old-name" />
+              <div>
+                <label class="form-label" style="font-size: var(--font-size-xs);">Location Name *</label>
+                <input type="text" id="edit-loc-name" required style="width: 100%;" />
+                <span style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px; display: block;">Renaming will automatically update all components in this location.</span>
+              </div>
+              <div>
+                <label class="form-label" style="font-size: var(--font-size-xs);">Description / Notes</label>
+                <input type="text" id="edit-loc-desc" placeholder="e.g., Top drawer, ESD protective container" style="width: 100%;" />
+              </div>
+              <div style="display: flex; gap: 12px; align-items: flex-end;">
+                <div style="width: 70px;">
+                  <label class="form-label" style="font-size: var(--font-size-xs);">Color</label>
+                  <input type="color" id="edit-loc-color" style="width: 100%; height: 40px; border-radius: 6px; cursor: pointer; padding: 2px;" />
+                </div>
+                <div style="flex: 1;">
+                  <span style="font-size: 11px; color: var(--text-tertiary); display: block; margin-bottom: 4px;">Quick Colors:</span>
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    ${LOCATION_COLOR_PRESETS.map(c => `
+                      <button type="button" class="btn-edit-preset-loc-color" data-color="${c}" style="width: 20px; height: 20px; border-radius: 50%; background: ${c}; border: 2px solid var(--border-secondary); cursor: pointer; padding: 0;"></button>
+                    `).join('')}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-primary); background: var(--bg-secondary);">
+              <button type="button" class="btn btn-secondary" id="edit-loc-cancel-btn">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   `;
 
@@ -500,6 +613,56 @@ export async function renderSettings(container, { refreshView }) {
     });
   });
 
+  // Edit Category handlers
+  const editCatModal = document.getElementById('edit-cat-modal');
+  const closeEditCatModal = () => { if (editCatModal) editCatModal.style.display = 'none'; };
+  document.getElementById('edit-cat-close-btn')?.addEventListener('click', closeEditCatModal);
+  document.getElementById('edit-cat-cancel-btn')?.addEventListener('click', closeEditCatModal);
+  editCatModal?.addEventListener('click', (e) => { if (e.target === editCatModal) closeEditCatModal(); });
+
+  container.querySelectorAll('.btn-edit-preset-emoji').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const iconInput = document.getElementById('edit-cat-icon');
+      if (iconInput) iconInput.value = btn.dataset.emoji;
+    });
+  });
+
+  container.querySelectorAll('.btn-edit-cat').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      const icon = btn.dataset.icon;
+      const color = btn.dataset.color;
+      document.getElementById('edit-cat-old-name').value = name;
+      document.getElementById('edit-cat-name').value = name;
+      document.getElementById('edit-cat-icon').value = icon;
+      document.getElementById('edit-cat-color').value = color;
+      if (editCatModal) editCatModal.style.display = 'flex';
+      setTimeout(() => document.getElementById('edit-cat-name')?.focus(), 50);
+    });
+  });
+
+  document.getElementById('edit-category-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const oldName = document.getElementById('edit-cat-old-name').value;
+    const newName = document.getElementById('edit-cat-name').value.trim();
+    const icon = document.getElementById('edit-cat-icon').value.trim() || '📦';
+    const color = document.getElementById('edit-cat-color').value;
+
+    if (!newName) {
+      showToast('Category name is required', 'warning');
+      return;
+    }
+
+    try {
+      await saveCategory({ name: newName, icon, color }, oldName);
+      closeEditCatModal();
+      showToast(`Category "${newName}" updated!`, 'success');
+      refreshView();
+    } catch (err) {
+      showToast('Failed to update category: ' + err.message, 'error');
+    }
+  });
+
   // Delete Category handlers
   container.querySelectorAll('.btn-delete-cat').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -520,10 +683,18 @@ export async function renderSettings(container, { refreshView }) {
   // ---- Add Location Form Handler ----
   const addLocForm = document.getElementById('add-location-form');
   if (addLocForm) {
+    container.querySelectorAll('.btn-preset-loc-color').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const colorInput = document.getElementById('new-loc-color');
+        if (colorInput) colorInput.value = btn.dataset.color;
+      });
+    });
+
     addLocForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('new-loc-name').value.trim();
       const description = document.getElementById('new-loc-desc').value.trim();
+      const color = document.getElementById('new-loc-color')?.value || '#6366f1';
 
       if (!name) {
         showToast('Location name is required', 'warning');
@@ -531,7 +702,7 @@ export async function renderSettings(container, { refreshView }) {
       }
 
       try {
-        await saveLocation({ name, description });
+        await saveLocation({ name, description, color });
         showToast(`Storage location "${name}" created!`, 'success');
         refreshView();
       } catch (err) {
@@ -539,6 +710,56 @@ export async function renderSettings(container, { refreshView }) {
       }
     });
   }
+
+  // Edit Location handlers
+  const editLocModal = document.getElementById('edit-loc-modal');
+  const closeEditLocModal = () => { if (editLocModal) editLocModal.style.display = 'none'; };
+  document.getElementById('edit-loc-close-btn')?.addEventListener('click', closeEditLocModal);
+  document.getElementById('edit-loc-cancel-btn')?.addEventListener('click', closeEditLocModal);
+  editLocModal?.addEventListener('click', (e) => { if (e.target === editLocModal) closeEditLocModal(); });
+
+  container.querySelectorAll('.btn-edit-preset-loc-color').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const colorInput = document.getElementById('edit-loc-color');
+      if (colorInput) colorInput.value = btn.dataset.color;
+    });
+  });
+
+  container.querySelectorAll('.btn-edit-loc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      const desc = btn.dataset.desc;
+      const color = btn.dataset.color || '#6366f1';
+      document.getElementById('edit-loc-old-name').value = name;
+      document.getElementById('edit-loc-name').value = name;
+      document.getElementById('edit-loc-desc').value = desc;
+      document.getElementById('edit-loc-color').value = color;
+      if (editLocModal) editLocModal.style.display = 'flex';
+      setTimeout(() => document.getElementById('edit-loc-name')?.focus(), 50);
+    });
+  });
+
+  document.getElementById('edit-location-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const oldName = document.getElementById('edit-loc-old-name').value;
+    const newName = document.getElementById('edit-loc-name').value.trim();
+    const description = document.getElementById('edit-loc-desc').value.trim();
+    const color = document.getElementById('edit-loc-color').value;
+
+    if (!newName) {
+      showToast('Location name is required', 'warning');
+      return;
+    }
+
+    try {
+      await saveLocation({ name: newName, description, color }, oldName);
+      closeEditLocModal();
+      showToast(`Storage location "${newName}" updated!`, 'success');
+      refreshView();
+    } catch (err) {
+      showToast('Failed to update location: ' + err.message, 'error');
+    }
+  });
 
   // Delete Location handlers
   container.querySelectorAll('.btn-delete-loc').forEach(btn => {

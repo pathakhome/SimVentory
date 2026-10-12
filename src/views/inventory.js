@@ -1,5 +1,5 @@
 import { getAllItems, getImage, saveItem, addHistory, getCategories, getLocations, saveLocation } from '../db.js';
-import { getCategoryColor, getCategoryIcon, getConditionMeta, ITEM_CONDITIONS } from '../categories.js';
+import { getCategoryColor, getCategoryIcon, getConditionMeta, ITEM_CONDITIONS, getLocationColor } from '../categories.js';
 import { showToast } from '../toast.js';
 
 let cachedImageURLs = {};
@@ -393,15 +393,15 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   function renderGridCard(item) {
     const imgSrc = cachedImageURLs[item.id] || '';
     const catColor = getCategoryColor(item.category, categories);
-    const catIcon = getCategoryIcon(item.category, categories);
     const condMeta = getConditionMeta(item.condition);
+    const locColor = getLocationColor(item.location, locations);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
     const isSelected = selectedItemIds.has(item.id);
 
     return `
       <div class="item-card ${isSelected ? 'is-selected' : ''}" data-item-id="${item.id}">
         <div class="item-card-image">
-          <input type="checkbox" class="item-select-checkbox" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item to move" />
+          <input type="checkbox" class="item-select-checkbox" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item" />
           ${imgSrc ? `<img src="${imgSrc}" alt="${escapeHtml(item.name)}" loading="lazy"/>` : `
             <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           `}
@@ -410,17 +410,25 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           </button>
         </div>
         <div class="item-card-body">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
-            <span class="item-card-category" style="background: ${catColor}20; color: ${catColor};">${catIcon} ${item.category}</span>
-            <span class="item-card-condition" style="background: ${condMeta.bg}; color: ${condMeta.color}; border: 1px solid ${condMeta.color}33; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px;">${condMeta.icon} ${escapeHtml(item.condition || 'Unpacked New')}</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+            <select class="card-inline-select card-inline-cat" data-item-id="${item.id}" title="Quick edit category" style="background: ${catColor}18; color: ${catColor}; border-color: ${catColor}55;">
+              ${categories.map(c => `<option value="${escapeHtml(c.name)}" ${item.category === c.name ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>`).join('')}
+            </select>
+            <select class="card-inline-select card-inline-cond" data-item-id="${item.id}" title="Quick edit condition" style="background: ${condMeta.bg}; color: ${condMeta.color}; border-color: ${condMeta.color}55;">
+              ${ITEM_CONDITIONS.map(c => {
+                const cm = getConditionMeta(c);
+                return `<option value="${escapeHtml(c)}" ${(item.condition || 'Unpacked New') === c ? 'selected' : ''}>${cm.icon} ${escapeHtml(c)}</option>`;
+              }).join('')}
+            </select>
           </div>
           <div class="item-card-name">${escapeHtml(item.name)}</div>
-          ${item.location ? `
-            <div class="item-card-location" title="${escapeHtml(item.location)}">
-              <span class="location-pin">📍</span>
-              <span class="location-name">${escapeHtml(item.location)}</span>
-            </div>
-          ` : ''}
+          <div class="item-card-location" style="display:flex; align-items:center; gap:6px; margin: 4px 0 6px 0;">
+            <span style="font-size:12px; color: ${locColor};">📍</span>
+            <select class="card-inline-select card-inline-loc" data-item-id="${item.id}" title="Quick edit location" style="background: ${locColor}18; color: ${locColor}; border-color: ${locColor}55; flex: 1;">
+              ${!locations.some(l => l.name === item.location) ? `<option value="${escapeHtml(item.location || '')}" selected>${escapeHtml(item.location || 'Assign Location')}</option>` : ''}
+              ${locations.map(loc => `<option value="${escapeHtml(loc.name)}" ${item.location === loc.name ? 'selected' : ''}>📍 ${escapeHtml(loc.name)}</option>`).join('')}
+            </select>
+          </div>
           <div class="item-card-desc">${escapeHtml(item.description || 'No description')}</div>
           <div class="item-card-footer">
             <div class="item-qty">
@@ -440,19 +448,29 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   function renderListRow(item) {
     const imgSrc = cachedImageURLs[item.id] || '';
     const catColor = getCategoryColor(item.category, categories);
-    const catIcon = getCategoryIcon(item.category, categories);
     const condMeta = getConditionMeta(item.condition);
+    const locColor = getLocationColor(item.location, locations);
     const qtyClass = item.quantity === 0 ? 'out' : (item.quantity <= item.lowStockThreshold ? 'low' : '');
     const isSelected = selectedItemIds.has(item.id);
 
     return `
       <div class="item-list-row ${isSelected ? 'is-selected' : ''}" data-item-id="${item.id}">
-        <input type="checkbox" class="item-select-checkbox-list" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item to move" style="width:18px; height:18px; cursor:pointer;" />
+        <input type="checkbox" class="item-select-checkbox-list" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item" style="width:18px; height:18px; cursor:pointer;" />
         ${imgSrc ? `<img class="item-list-img" src="${imgSrc}" alt="${escapeHtml(item.name)}"/>` : `<div class="item-list-img" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>`}
-        <span class="item-list-name">${escapeHtml(item.name)}</span>
-        <span class="item-list-category" style="color: ${catColor};">${catIcon} ${item.category}</span>
-        <span class="item-list-condition" style="background: ${condMeta.bg}; color: ${condMeta.color}; border: 1px solid ${condMeta.color}33; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 99px; white-space: nowrap;">${condMeta.icon} ${escapeHtml(item.condition || 'Unpacked New')}</span>
-        <span class="item-list-location" style="font-size:var(--font-size-base); font-weight:700; color:var(--text-primary);">${item.location ? `📍 ${escapeHtml(item.location)}` : '<span style="color:var(--text-tertiary);font-weight:normal;">—</span>'}</span>
+        <span class="item-list-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+        <select class="card-inline-select card-inline-cat" data-item-id="${item.id}" title="Quick edit category" style="background: ${catColor}18; color: ${catColor}; border-color: ${catColor}55;">
+          ${categories.map(c => `<option value="${escapeHtml(c.name)}" ${item.category === c.name ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>`).join('')}
+        </select>
+        <select class="card-inline-select card-inline-cond" data-item-id="${item.id}" title="Quick edit condition" style="background: ${condMeta.bg}; color: ${condMeta.color}; border-color: ${condMeta.color}55;">
+          ${ITEM_CONDITIONS.map(c => {
+            const cm = getConditionMeta(c);
+            return `<option value="${escapeHtml(c)}" ${(item.condition || 'Unpacked New') === c ? 'selected' : ''}>${cm.icon} ${escapeHtml(c)}</option>`;
+          }).join('')}
+        </select>
+        <select class="card-inline-select card-inline-loc" data-item-id="${item.id}" title="Quick edit location" style="background: ${locColor}18; color: ${locColor}; border-color: ${locColor}55;">
+          ${!locations.some(l => l.name === item.location) ? `<option value="${escapeHtml(item.location || '')}" selected>${escapeHtml(item.location || 'Assign Location')}</option>` : ''}
+          ${locations.map(loc => `<option value="${escapeHtml(loc.name)}" ${item.location === loc.name ? 'selected' : ''}>📍 ${escapeHtml(loc.name)}</option>`).join('')}
+        </select>
         <span class="item-list-qty item-qty-value ${qtyClass}">${item.quantity}</span>
         <span class="item-list-fav ${item.isFavorite ? 'active' : ''}" data-fav-id="${item.id}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="${item.isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -507,7 +525,8 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           e.target.closest('.item-card-favorite') ||
           e.target.closest('.item-list-fav') ||
           e.target.closest('.item-select-checkbox') ||
-          e.target.closest('.item-select-checkbox-list')
+          e.target.closest('.item-select-checkbox-list') ||
+          e.target.closest('.card-inline-select')
         ) return;
         openItemModal(el.dataset.itemId);
       });
@@ -541,6 +560,66 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
         updateBatchBar();
       });
     }
+
+    // Inline quick edit: Category
+    container.querySelectorAll('.card-inline-cat').forEach(sel => {
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const id = sel.dataset.itemId;
+        const item = items.find(i => i.id === id);
+        if (!item) return;
+        const oldVal = item.category;
+        const newVal = sel.value;
+        if (oldVal === newVal) return;
+        item.category = newVal;
+        item.updatedAt = new Date().toISOString();
+        await saveItem(item);
+        await addHistory(id, 'category_changed', `Category updated from "${oldVal}" to "${newVal}"`);
+        showToast(`Category updated to "${newVal}"`, 'success');
+        renderItems();
+      });
+    });
+
+    // Inline quick edit: Condition
+    container.querySelectorAll('.card-inline-cond').forEach(sel => {
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const id = sel.dataset.itemId;
+        const item = items.find(i => i.id === id);
+        if (!item) return;
+        const oldVal = item.condition || 'Unpacked New';
+        const newVal = sel.value;
+        if (oldVal === newVal) return;
+        item.condition = newVal;
+        item.updatedAt = new Date().toISOString();
+        await saveItem(item);
+        await addHistory(id, 'condition_changed', `Condition updated to "${newVal}"`);
+        showToast(`Condition updated to "${newVal}"`, 'success');
+        renderItems();
+      });
+    });
+
+    // Inline quick edit: Location
+    container.querySelectorAll('.card-inline-loc').forEach(sel => {
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const id = sel.dataset.itemId;
+        const item = items.find(i => i.id === id);
+        if (!item) return;
+        const oldVal = item.location || 'None';
+        const newVal = sel.value;
+        if (oldVal === newVal) return;
+        item.location = newVal;
+        item.updatedAt = new Date().toISOString();
+        await saveItem(item);
+        await addHistory(id, 'moved', `Moved from "${oldVal}" to "${newVal}"`);
+        showToast(`Moved to "${newVal}"`, 'success');
+        renderItems();
+      });
+    });
 
     // Quantity buttons
     container.querySelectorAll('.qty-btn').forEach(btn => {

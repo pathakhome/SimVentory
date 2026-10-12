@@ -1,8 +1,8 @@
 /**
  * Item Detail Modal renderer.
  */
-import { getItem, getImage, getHistory, deleteItem, saveItem, addHistory, getCategories, saveLocation } from '../db.js';
-import { getCategoryColor, getCategoryIcon, getConditionMeta } from '../categories.js';
+import { getItem, getImage, getHistory, deleteItem, saveItem, addHistory, getCategories, getLocations, saveLocation } from '../db.js';
+import { getCategoryColor, getCategoryIcon, getConditionMeta, getLocationColor } from '../categories.js';
 import { showToast } from '../toast.js';
 import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
 import { openAIReviewModal } from './aiReviewModal.js';
@@ -22,9 +22,11 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
   const imageBlob = await getImage(itemId);
   const imageSrc = imageBlob ? URL.createObjectURL(imageBlob) : null;
   const history = await getHistory(itemId);
+  const locations = await getLocations();
   const catColor = getCategoryColor(item.category);
   const catIcon = getCategoryIcon(item.category);
   const condMeta = getConditionMeta(item.condition);
+  const locColor = getLocationColor(item.location, locations);
 
   const modal = document.getElementById('item-modal');
   const modalContent = document.getElementById('item-modal-content');
@@ -72,7 +74,7 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
         <div class="modal-detail-item">
           <div class="modal-detail-label">Location</div>
           <div class="modal-detail-value" style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
-            <span>📍 ${escapeHtml(item.location || 'Unassigned')}</span>
+            <span style="color: ${locColor}; font-weight: 600;">📍 ${escapeHtml(item.location || 'Unassigned')}</span>
             <button type="button" class="btn btn-secondary btn-sm" id="modal-move-btn" style="padding: 2px 8px; font-size: 11px;" title="Move to another storage location">Move</button>
           </div>
         </div>

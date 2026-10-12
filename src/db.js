@@ -537,16 +537,19 @@ export async function getCategories() {
 /**
  * Add or update a category.
  * @param {Object} category { name, icon, color }
+ * @param {string|null} oldName Optional old name if renaming
  */
-export async function saveCategory(category) {
+export async function saveCategory(category, oldName = null) {
   if (!category || !category.name) throw new Error('Category name is required');
+
+  const payload = { ...category, ...(oldName ? { oldName } : {}) };
 
   if (await isServerAvailable()) {
     try {
       const res = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(category),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         const data = await res.json();
@@ -558,7 +561,8 @@ export async function saveCategory(category) {
   // Fallback to localStorage
   const current = await getCategories();
   const cleanName = category.name.trim();
-  const idx = current.findIndex(c => c.name.toLowerCase() === cleanName.toLowerCase());
+  const cleanOld = oldName ? oldName.trim().toLowerCase() : null;
+
   const entry = {
     name: cleanName,
     icon: category.icon || '📦',
@@ -566,10 +570,30 @@ export async function saveCategory(category) {
     isDefault: false,
   };
 
-  if (idx >= 0) {
-    current[idx] = { ...current[idx], ...entry };
+  if (cleanOld && cleanOld !== cleanName.toLowerCase()) {
+    const oldIdx = current.findIndex(c => c.name.toLowerCase() === cleanOld);
+    if (oldIdx >= 0) {
+      current[oldIdx] = { ...current[oldIdx], ...entry };
+    } else {
+      current.push(entry);
+    }
+
+    // Cascade rename to items
+    const allItems = await getAllItems();
+    for (const item of allItems) {
+      if ((item.category || '').toLowerCase() === cleanOld) {
+        item.category = cleanName;
+        item.updatedAt = new Date().toISOString();
+        await saveItem(item);
+      }
+    }
   } else {
-    current.push(entry);
+    const idx = current.findIndex(c => c.name.toLowerCase() === cleanName.toLowerCase());
+    if (idx >= 0) {
+      current[idx] = { ...current[idx], ...entry };
+    } else {
+      current.push(entry);
+    }
   }
 
   localStorage.setItem('cv_custom_categories', JSON.stringify(current));
@@ -604,13 +628,22 @@ export async function deleteCategory(name) {
 
 /**
  * Get all storage locations.
- * @returns {Promise<Array<{name: string, description: string}>>}
+ * @returns {Promise<Array<{name: string, description: string, color: string}>>}
  */
 export async function getLocations() {
   if (await isServerAvailable()) {
     try {
       const res = await fetch('/api/locations');
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          return data.map(l => ({
+            name: l.name,
+            description: l.description || '',
+            color: l.color || '#6366f1',
+          }));
+        }
+      }
     } catch (e) {}
   }
 
@@ -621,7 +654,11 @@ export async function getLocations() {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        parsed.forEach(l => locMap.set(l.name.toLowerCase(), l));
+        parsed.forEach(l => locMap.set(l.name.toLowerCase(), {
+          name: l.name,
+          description: l.description || '',
+          color: l.color || '#6366f1',
+        }));
       }
     }
   } catch (e) {}
@@ -631,7 +668,7 @@ export async function getLocations() {
     if (i.location && i.location.trim()) {
       const trimmed = i.location.trim();
       if (!locMap.has(trimmed.toLowerCase())) {
-        locMap.set(trimmed.toLowerCase(), { name: trimmed, description: '' });
+        locMap.set(trimmed.toLowerCase(), { name: trimmed, description: '', color: '#6366f1' });
       }
     }
   });
@@ -641,17 +678,24 @@ export async function getLocations() {
 
 /**
  * Add or update a storage location.
- * @param {Object} location { name, description }
+ * @param {Object} location { name, description, color }
+ * @param {string|null} oldName Optional old name if renaming
  */
-export async function saveLocation(location) {
+export async function saveLocation(location, oldName = null) {
   if (!location || !location.name) throw new Error('Location name is required');
+
+  const payload = {
+    ...location,
+    color: location.color || '#6366f1',
+    ...(oldName ? { oldName } : {}),
+  };
 
   if (await isServerAvailable()) {
     try {
       const res = await fetch('/api/locations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(location),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         const data = await res.json();
@@ -662,13 +706,37 @@ export async function saveLocation(location) {
 
   const current = await getLocations();
   const cleanName = location.name.trim();
-  const idx = current.findIndex(l => l.name.toLowerCase() === cleanName.toLowerCase());
-  const entry = { name: cleanName, description: (location.description || '').trim() };
+  const cleanOld = oldName ? oldName.trim().toLowerCase() : null;
+  const entry = {
+    name: cleanName,
+    description: (location.description || '').trim(),
+    color: (location.color || '#6366f1').trim(),
+  };
 
-  if (idx >= 0) {
-    current[idx] = entry;
+  if (cleanOld && cleanOld !== cleanName.toLowerCase()) {
+    const oldIdx = current.findIndex(l => l.name.toLowerCase() === cleanOld);
+    if (oldIdx >= 0) {
+      current[oldIdx] = entry;
+    } else {
+      current.push(entry);
+    }
+
+    // Cascade rename to items
+    const allItems = await getAllItems();
+    for (const item of allItems) {
+      if ((item.location || '').toLowerCase() === cleanOld) {
+        item.location = cleanName;
+        item.updatedAt = new Date().toISOString();
+        await saveItem(item);
+      }
+    }
   } else {
-    current.push(entry);
+    const idx = current.findIndex(l => l.name.toLowerCase() === cleanName.toLowerCase());
+    if (idx >= 0) {
+      current[idx] = entry;
+    } else {
+      current.push(entry);
+    }
   }
 
   localStorage.setItem('cv_custom_locations', JSON.stringify(current));

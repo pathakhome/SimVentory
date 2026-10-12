@@ -43,6 +43,34 @@ export function getCategoryIcon(name, customList = null) {
 }
 
 /**
+ * Storage location colors and helpers.
+ */
+export const DEFAULT_LOCATION_COLOR = '#6366f1';
+export const LOCATION_COLOR_PRESETS = [
+  '#6366f1', // Indigo
+  '#10b981', // Emerald
+  '#f59e0b', // Amber
+  '#ec4899', // Pink
+  '#06b6d4', // Cyan
+  '#8b5cf6', // Violet
+  '#3b82f6', // Blue
+  '#14b8a6', // Teal
+  '#f97316', // Orange
+  '#ef4444', // Red
+  '#64748b', // Slate
+];
+
+/**
+ * Get location color by name from a locations array.
+ */
+export function getLocationColor(name, locationsList = []) {
+  if (!name) return DEFAULT_LOCATION_COLOR;
+  const clean = String(name).trim().toLowerCase();
+  const loc = (locationsList || []).find(l => (l.name || '').trim().toLowerCase() === clean);
+  return loc?.color || DEFAULT_LOCATION_COLOR;
+}
+
+/**
  * Component Condition definitions and metadata.
  */
 export const ITEM_CONDITIONS = [

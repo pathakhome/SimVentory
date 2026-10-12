@@ -111,6 +111,9 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                 <datalist id="batch-locations-list">
                   ${locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
                 </datalist>
+                <datalist id="queue-locations-datalist">
+                  ${locations.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('')}
+                </datalist>
               </div>
 
               <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-secondary); border: 1px solid var(--border-primary); padding: 6px 12px; border-radius: var(--border-radius-md);">
@@ -257,51 +260,8 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             ` : ''}
           </div>
 
-          <!-- Form Fields if Ready -->
-          ${isReady ? `
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px;">
-              <div>
-                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Name *</label>
-                <input type="text" class="queue-item-name" data-id="${item.id}" value="${escapeAttr(item.name || '')}" style="width: 100%; font-size: var(--font-size-xs); font-weight: 600; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
-              </div>
-              <div>
-                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Category</label>
-                <select class="queue-item-cat" data-id="${item.id}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);">
-                  ${categories.map(c => `
-                    <option value="${escapeAttr(c.name)}" ${(item.category || item.aiData?.category) === c.name ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>
-                  `).join('')}
-                </select>
-              </div>
-              <div>
-                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Storage Location *</label>
-                <input type="text" class="queue-item-location" data-id="${item.id}" value="${escapeAttr(item.location || '')}" placeholder="Required" required style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
-              </div>
-              <div>
-                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Condition</label>
-                <select class="queue-item-condition" data-id="${item.id}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);">
-                  ${ITEM_CONDITIONS.map(c => `
-                    <option value="${escapeAttr(c)}" ${(item.condition || item.aiData?.condition || DEFAULT_CONDITION) === c ? 'selected' : ''}>${getConditionMeta(c).icon} ${escapeHtml(c)}</option>
-                  `).join('')}
-                </select>
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <div style="flex: 1;">
-                  <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Qty</label>
-                  <input type="number" min="0" class="queue-item-qty" data-id="${item.id}" value="${item.quantity !== undefined ? item.quantity : 1}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary); text-align: center;" />
-                </div>
-                <div style="flex: 1;">
-                  <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Part # / SKU</label>
-                  <input type="text" class="queue-item-partnum" data-id="${item.id}" value="${escapeAttr(item.partNumber || '')}" placeholder="Optional" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
-                </div>
-              </div>
-            </div>
-
-            ${item.tags && item.tags.length > 0 ? `
-              <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
-                ${item.tags.slice(0, 5).map(t => `<span style="font-size: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); padding: 1px 6px; border-radius: 4px;">${escapeHtml(t)}</span>`).join('')}
-              </div>
-            ` : ''}
-          ` : isError ? `
+          <!-- Card Status Indicator -->
+          ${isError ? `
             <div style="font-size: var(--font-size-xs); color: var(--accent-danger); margin-bottom: 8px;">
               ${escapeHtml(item.fileName)} • Error: ${escapeHtml(item.error)}
             </div>
@@ -310,11 +270,55 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
               <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
               <span>${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Analyzing with AI in background...</span>
             </div>
-          ` : `
+          ` : !isReady ? `
             <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 8px;">
               ${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Waiting in queue...
             </div>
-          `}
+          ` : ''}
+
+          <!-- Editable Fields on Card -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Name *</label>
+              <input type="text" class="queue-item-name" data-id="${item.id}" value="${escapeAttr(item.name || (isReady ? 'Electronic Component' : item.fileName))}" placeholder="Component Name" style="width: 100%; font-size: var(--font-size-xs); font-weight: 600; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
+            </div>
+            <div>
+              <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Category</label>
+              <select class="queue-item-cat" data-id="${item.id}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);">
+                ${categories.map(c => `
+                  <option value="${escapeAttr(c.name)}" ${(item.category || item.aiData?.category) === c.name ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>
+                `).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Storage Location *</label>
+              <input type="text" list="queue-locations-datalist" class="queue-item-location" data-id="${item.id}" value="${escapeAttr(item.location || '')}" placeholder="Required location" required style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
+            </div>
+            <div>
+              <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Condition</label>
+              <select class="queue-item-condition" data-id="${item.id}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);">
+                ${ITEM_CONDITIONS.map(c => `
+                  <option value="${escapeAttr(c)}" ${(item.condition || item.aiData?.condition || DEFAULT_CONDITION) === c ? 'selected' : ''}>${getConditionMeta(c).icon} ${escapeHtml(c)}</option>
+                `).join('')}
+              </select>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <div style="flex: 1;">
+                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Qty</label>
+                <input type="number" min="0" class="queue-item-qty" data-id="${item.id}" value="${item.quantity !== undefined ? item.quantity : 1}" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary); text-align: center;" />
+              </div>
+              <div style="flex: 1;">
+                <label style="font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Part # / SKU</label>
+                <input type="text" class="queue-item-partnum" data-id="${item.id}" value="${escapeAttr(item.partNumber || '')}" placeholder="Optional" style="width: 100%; font-size: var(--font-size-xs); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary);" />
+              </div>
+            </div>
+          </div>
+
+          ${isReady && item.tags && item.tags.length > 0 ? `
+            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
+              ${item.tags.slice(0, 5).map(t => `<span style="font-size: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); padding: 1px 6px; border-radius: 4px;">${escapeHtml(t)}</span>`).join('')}
+            </div>
+          ` : ''}
 
           <!-- Bottom Card Action Controls -->
           <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-end; border-top: 1px solid var(--border-primary); padding-top: 10px;">
@@ -444,41 +448,47 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
       }
     });
 
-    // Real-time synchronization of card inputs so edits aren't lost
+    // Real-time synchronization of card inputs without interrupting typing
     container.querySelectorAll('.queue-item-name').forEach(input => {
       input.addEventListener('input', (e) => {
-        updateQueueItem(e.target.dataset.id, { name: e.target.value.trim() });
+        updateQueueItem(e.target.dataset.id, { name: e.target.value }, { silent: true });
+      });
+      input.addEventListener('change', (e) => {
+        updateQueueItem(e.target.dataset.id, { name: e.target.value.trim() }, { silent: true });
       });
     });
 
     container.querySelectorAll('.queue-item-cat').forEach(select => {
       select.addEventListener('change', (e) => {
-        updateQueueItem(e.target.dataset.id, { category: e.target.value });
+        updateQueueItem(e.target.dataset.id, { category: e.target.value }, { silent: true });
       });
     });
 
     container.querySelectorAll('.queue-item-location').forEach(input => {
       input.addEventListener('input', (e) => {
-        updateQueueItem(e.target.dataset.id, { location: e.target.value.trim() });
+        updateQueueItem(e.target.dataset.id, { location: e.target.value }, { silent: true });
+      });
+      input.addEventListener('change', (e) => {
+        updateQueueItem(e.target.dataset.id, { location: e.target.value.trim() }, { silent: true });
       });
     });
 
     container.querySelectorAll('.queue-item-condition').forEach(select => {
       select.addEventListener('change', (e) => {
-        updateQueueItem(e.target.dataset.id, { condition: e.target.value });
+        updateQueueItem(e.target.dataset.id, { condition: e.target.value }, { silent: true });
       });
     });
 
     container.querySelectorAll('.queue-item-qty').forEach(input => {
       input.addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10);
-        if (Number.isFinite(val)) updateQueueItem(e.target.dataset.id, { quantity: val });
+        if (Number.isFinite(val)) updateQueueItem(e.target.dataset.id, { quantity: val }, { silent: true });
       });
     });
 
     container.querySelectorAll('.queue-item-partnum').forEach(input => {
       input.addEventListener('input', (e) => {
-        updateQueueItem(e.target.dataset.id, { partNumber: e.target.value.trim() });
+        updateQueueItem(e.target.dataset.id, { partNumber: e.target.value }, { silent: true });
       });
     });
 
@@ -562,6 +572,21 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
 
   // Subscribe to live queue updates
   activeUnsubscribe = subscribeQueue(async (updatedItems) => {
+    // If the queue view is unmounted or user navigated away, cancel subscription and do not touch DOM!
+    if (!document.body.contains(container) || !container.querySelector('#queue-dropzone')) {
+      if (activeUnsubscribe) {
+        activeUnsubscribe();
+        activeUnsubscribe = null;
+      }
+      return;
+    }
+
+    // If user is currently typing/focused in an input element inside the queue, don't destroy DOM!
+    const activeEl = document.activeElement;
+    if (activeEl && container.contains(activeEl) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeEl.tagName)) {
+      return;
+    }
+
     await syncThumbnails(updatedItems);
     render();
   });
@@ -575,6 +600,14 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
   if (initialItems.some(i => i.status === 'queued')) {
     processQueue();
   }
+
+  // Return cleanup function to unsubscribe when navigating away
+  return () => {
+    if (activeUnsubscribe) {
+      activeUnsubscribe();
+      activeUnsubscribe = null;
+    }
+  };
 }
 
 function escapeHtml(str) {

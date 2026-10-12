@@ -49,7 +49,18 @@ themeToggle.addEventListener('click', () => {
 });
 
 // ---- Navigation ----
+let currentViewCleanup = null;
+
 function navigateTo(view, params = {}) {
+  if (typeof currentViewCleanup === 'function') {
+    try {
+      currentViewCleanup();
+    } catch (e) {
+      console.warn('[Router] View cleanup error:', e);
+    }
+    currentViewCleanup = null;
+  }
+
   currentView = view;
   viewParams = params;
 
@@ -73,28 +84,33 @@ async function renderCurrentView() {
     refreshView: () => renderCurrentView(),
   };
 
+  let cleanup = null;
   switch (currentView) {
     case 'dashboard':
-      await renderDashboard(mainContent, context);
+      cleanup = await renderDashboard(mainContent, context);
       break;
     case 'inventory':
-      await renderInventory(mainContent, context);
+      cleanup = await renderInventory(mainContent, context);
       break;
     case 'add-item':
-      await renderItemForm(mainContent, {
+      cleanup = await renderItemForm(mainContent, {
         ...context,
         editItemId: viewParams.editItemId || null,
         prefillPartNumber: viewParams.prefillPartNumber || null,
       });
       break;
     case 'queue':
-      await renderQueue(mainContent, context);
+      cleanup = await renderQueue(mainContent, context);
       break;
     case 'settings':
-      await renderSettings(mainContent, context);
+      cleanup = await renderSettings(mainContent, context);
       break;
     default:
-      await renderDashboard(mainContent, context);
+      cleanup = await renderDashboard(mainContent, context);
+  }
+
+  if (typeof cleanup === 'function') {
+    currentViewCleanup = cleanup;
   }
 }
 
