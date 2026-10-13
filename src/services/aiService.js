@@ -114,6 +114,12 @@ ESTIMATED QUANTITY:
 - If only 1 unit is shown or the count cannot be determined with confidence, default to 1.
 - Always output an integer >= 1 in "estimatedQuantity".
 
+DIMENSIONS IN DESCRIPTION:
+- In the "description" field, ALWAYS include a dedicated "Dimensions:" section/paragraph for each unit.
+- If physical dimensions are visible or known from standard package specifications (e.g., standard DIP-8 footprint ~19 mm x 6.5 mm x 3.3 mm, SMD 0805 ~2.0 mm x 1.25 mm, TO-220, ESP32 dev board ~51 mm x 28 mm, or pin pitch), estimate and state them in millimeters (e.g. "Dimensions: ~19 mm x 6.5 mm x 3.3 mm").
+- If dimensions cannot be determined from the image or package type, you MUST STILL include the placeholder line: "Dimensions: [Pending measurement - L x W x H mm]" so the user can fill it in later.
+- The "description" field MUST ALWAYS conclude with this "Dimensions:" paragraph.
+
 Respond ONLY with a valid, raw JSON object (no explanations, no markdown formatting outside JSON).
 Required JSON schema:
 {
@@ -122,7 +128,7 @@ Required JSON schema:
   "category": "One category selected from the available categories list above",
   "condition": "One condition selected strictly from: ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged']",
   "estimatedQuantity": 1,
-  "description": "Technical summary describing functionality, package type (e.g. DIP-8, SOP-8, SMD 0805, TO-220), pin pitch, operating voltages, or key features",
+  "description": "Technical summary describing functionality, package type (e.g. DIP-8, SOP-8, SMD 0805, TO-220), pin pitch, operating voltages, or key features.\n\nDimensions: Estimated physical size (e.g., '~19 mm x 6.5 mm x 3.3 mm' or '[Pending measurement - L x W x H mm]')",
   "tags": ["array", "of", "4-8", "searchable", "tags", "e.g.", "timer", "analog", "DIP-8", "5V-15V"],
   "supplierInfo": "Primary manufacturer or distributor (e.g., Texas Instruments, Espressif, STMicroelectronics, Adafruit, SparkFun, Generic)",
   "datasheetUrl": "Direct official datasheet URL if known with high confidence, otherwise empty string",
@@ -135,7 +141,7 @@ export const STATIC_JSON_SCHEMA = {
   category: "string (One matching category from vault)",
   condition: "string (One condition: 'Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged')",
   estimatedQuantity: "number (Count of visible units or quantity printed on packaging, integer >= 1, default 1)",
-  description: "string (Technical summary, package, voltage ratings)",
+  description: "string (Technical summary, package, voltage ratings, and ALWAYS includes a 'Dimensions: ...' paragraph)",
   tags: "string[] (Searchable keywords e.g. ['timer', 'DIP-8', '5V-15V'])",
   supplierInfo: "string (Manufacturer or distributor)",
   datasheetUrl: "string (Manufacturer datasheet link or '')",
@@ -456,6 +462,10 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
     baseInstructions += `\n\nESTIMATED QUANTITY: Count the visible component units in the image and return an integer >= 1 in "estimatedQuantity" (default 1).`;
   }
 
+  if (!baseInstructions.toLowerCase().includes('dimension')) {
+    baseInstructions += `\n\nDIMENSIONS IN DESCRIPTION: Always include a dedicated "Dimensions:" paragraph at the end of the "description" field. If physical dimensions are estimated from the package/photo, state them (e.g. "Dimensions: ~19 mm x 6.5 mm x 3.3 mm"); if unknown, write "Dimensions: [Pending measurement - L x W x H mm]".`;
+  }
+
   const systemInstructions = baseInstructions + hintSnippet;
 
   let rawResponseText = '';
@@ -558,6 +568,14 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
     }
   }
 
+  // Sanitize description and guarantee a Dimensions paragraph exists
+  let description = (parsed.description || '').trim();
+  const hasDimensions = /dimensions?:/i.test(description);
+  if (!hasDimensions) {
+    const dimPlaceholder = 'Dimensions: [Pending measurement - L x W x H mm]';
+    description = description ? `${description}\n\n${dimPlaceholder}` : dimPlaceholder;
+  }
+
   return {
     name: (parsed.name || '').trim(),
     partNumber: (parsed.partNumber || '').trim(),
@@ -565,7 +583,7 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
     condition: matchedCond,
     estimatedQuantity,
     quantity: estimatedQuantity,
-    description: (parsed.description || '').trim(),
+    description,
     tags: Array.isArray(parsed.tags) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
     supplierInfo: (parsed.supplierInfo || '').trim(),
     datasheetUrl: (parsed.datasheetUrl || '').trim(),

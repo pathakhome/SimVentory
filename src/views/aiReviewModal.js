@@ -194,10 +194,11 @@ export function openAIReviewModal({
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer;">
                 <input type="checkbox" class="ai-field-check" data-field="description" ${aiData.description ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
-                Description & Package
+                Description & Physical Dimensions
               </label>
+              <span style="font-size: 10px; color: var(--text-tertiary);">Includes unit dimensions</span>
             </div>
-            <textarea id="ai-val-description" class="form-input" rows="2" style="width: 100%; font-size: var(--font-size-sm); resize: vertical;" placeholder="Component overview, package type, functionality...">${escapeHtml(aiData.description || '')}</textarea>
+            <textarea id="ai-val-description" class="form-input" rows="4" style="width: 100%; font-size: var(--font-size-sm); resize: vertical; line-height: 1.45;" placeholder="Component overview, package type, functionality...&#10;&#10;Dimensions: L x W x H mm">${escapeHtml(aiData.description || '')}</textarea>
           </div>
 
           <!-- Field: Tags -->
