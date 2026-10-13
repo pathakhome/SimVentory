@@ -120,13 +120,20 @@ DIMENSIONS IN DESCRIPTION:
 - If dimensions cannot be determined from the image or package type, you MUST STILL include the placeholder line: "Dimensions: [Pending measurement - L x W x H mm]" so the user can fill it in later.
 - The "description" field MUST ALWAYS conclude with this "Dimensions:" paragraph.
 
-ROBU.IN & DISTRIBUTOR SKU / BARCODE SEARCH GROUNDING:
-- If a barcode, packaging label, or printed sticker from Robu.in (or another component supplier) is visible in the photo:
-  1. Extract the printed SKU code / barcode into "partNumber" (e.g., '1219056' or 'R270708').
-  2. If the label shows "QTY: <number>", populate "estimatedQuantity" with that number.
-  3. If from Robu.in, set "supplierInfo" to "Robu.in".
-  4. Perform Google Search Grounding to look up "site:robu.in <SKU>" or the product code on the web to retrieve the exact official title, specs, pinouts, and dimensions directly from the distributor product page.
-  5. In "datasheetUrl", provide the official product page URL or datasheet URL discovered.
+ROBU.IN "WH/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
+- Robu.in uses a standard white barcode label on its sealed bags:
+  1. Top: 1D linear barcode.
+  2. Center: Prominent bold 4 to 7 digit numeric SKU code (e.g., '44258', '1219056', '270708').
+  3. Bottom: Warehouse inward tracking line containing "WH/IN/..." (e.g. 'WH/IN/58718') or "WH/OUT/...".
+- When you see a label with "WH/IN" or "WH/IN/...":
+  - SUPPLIER: Set "supplierInfo": "Robu.in".
+  - SKU / PART NUMBER: Extract ONLY the bold numeric SKU printed directly above the WH/IN line (e.g., '44258') into "partNumber". Do NOT put 'WH/IN/58718' in "partNumber".
+  - CONDITION: Set "condition": "Packed" (since it is sealed in the manufacturer/distributor bag).
+  - SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in "<SKU>"' (e.g. 'site:robu.in "44258"') or 'robu.in SKU <SKU>' to retrieve:
+    * The exact official component name (e.g. 'Infrared IR Receiver Module for Arduino').
+    * Operating voltage, pinout functions (e.g. VCC, GND, OUT/DAT), carrier frequency, and physical dimensions.
+    * The exact product page URL on robu.in for "datasheetUrl".
+- If the label also shows "QTY: <number>", populate "estimatedQuantity" with that number (default to 1 if not specified).
 
 CRITICAL FORMAT REQUIREMENT:
 Even though you are using Google Search Grounding to fetch product details, your final response MUST BE STRICTLY AND ONLY A SINGLE RAW JSON OBJECT (enclosed in { ... }) matching the schema below. Do not return conversational text or markdown explanation outside JSON.
@@ -477,6 +484,16 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
     baseInstructions += `\n\nDIMENSIONS IN DESCRIPTION: Always include a dedicated "Dimensions:" paragraph at the end of the "description" field. If physical dimensions are estimated from the package/photo, state them (e.g. "Dimensions: ~19 mm x 6.5 mm x 3.3 mm"); if unknown, write "Dimensions: [Pending measurement - L x W x H mm]".`;
   }
 
+  if (!baseInstructions.toLowerCase().includes('wh/in')) {
+    baseInstructions += `\n\nROBU.IN "WH/IN" BARCODE LABEL SIGNATURE:
+If the label shows a barcode, a bold 4 to 7 digit number (e.g. 44258), and a line with "WH/IN/..." (e.g. WH/IN/58718):
+1. SUPPLIER: Set "supplierInfo": "Robu.in".
+2. SKU: Extract the bold number directly above WH/IN (e.g. "44258") as "partNumber".
+3. SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in <SKU>' to find the exact official component title, specs, pinouts, and dimensions.
+4. CONDITION: Set "condition": "Packed".
+5. DATASHEET: Set "datasheetUrl" to the live Robu product page.`;
+  }
+
   const systemInstructions = baseInstructions + hintSnippet;
 
   let rawResponseText = '';
@@ -602,7 +619,7 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
   const parsed = parseAIResponseJSON(rawResponseText);
   const VALID_CONDITIONS = ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged'];
   const rawCond = (parsed.condition || '').trim();
-  const matchedCond = VALID_CONDITIONS.find(c => c.toLowerCase() === rawCond.toLowerCase()) || 'Unpacked New';
+  let matchedCond = VALID_CONDITIONS.find(c => c.toLowerCase() === rawCond.toLowerCase()) || 'Unpacked New';
 
   // Parse estimated quantity (integer >= 1, defaults to 1)
   let estimatedQuantity = 1;
@@ -622,9 +639,37 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
     description = description ? `${description}\n\n${dimPlaceholder}` : dimPlaceholder;
   }
 
-  const partNumber = (parsed.partNumber || '').trim();
+  let partNumber = (parsed.partNumber || '').trim();
   let supplierInfo = (parsed.supplierInfo || '').trim();
   let datasheetUrl = (parsed.datasheetUrl || '').trim();
+
+  // Detect Robu.in WH/IN warehouse inward barcode signature
+  const isRobuWhIn = /WH\s*[\/\\]\s*IN/i.test(rawResponseText) ||
+                     /WH\s*[\/\\]\s*IN/i.test(parsed.notes || '') ||
+                     /WH\s*[\/\\]\s*IN/i.test(partNumber);
+
+  if (isRobuWhIn) {
+    if (!supplierInfo) supplierInfo = 'Robu.in';
+    // If condition was default 'Unpacked New', mark as 'Packed' since it's sealed in the distributor pouch
+    if (matchedCond === 'Unpacked New') {
+      matchedCond = 'Packed';
+    }
+  }
+
+  // If partNumber accidentally captured WH/IN/..., extract the clean 4-7 digit product SKU
+  if (/WH\s*[\/\\]\s*IN/i.test(partNumber)) {
+    const skuMatch = partNumber.match(/\b(\d{4,7})\b/);
+    partNumber = skuMatch ? skuMatch[1] : '';
+  }
+
+  // If partNumber was missed but WH/IN was detected, look for 4-7 digit SKU near WH/IN in raw response
+  if (!partNumber && isRobuWhIn) {
+    const skuMatch = rawResponseText.match(/\b(\d{4,7})\b[\s\S]{0,40}WH\s*[\/\\]\s*IN/i) ||
+                     rawResponseText.match(/WH\s*[\/\\]\s*IN[\s\S]{0,40}\b(\d{4,7})\b/i);
+    if (skuMatch) {
+      partNumber = skuMatch[1];
+    }
+  }
 
   // If datasheetUrl is empty, use web sources from Google Search Grounding
   if (!datasheetUrl && extractedWebSources.length > 0) {
