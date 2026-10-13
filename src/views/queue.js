@@ -167,6 +167,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                 ${summary.isProcessing ? `
                   <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                   <span>Processing queue: <strong>${summary.ready + summary.error} / ${summary.total}</strong> (${percent}%)</span>
+                  <span style="font-size: 10px; background: rgba(99,102,241,0.12); color: var(--accent-primary); border: 1px solid rgba(99,102,241,0.25); border-radius: 4px; padding: 1px 6px; font-weight: 600;">⚡ 3 Parallel Workers</span>
                 ` : `
                   <span>Queue Status: <strong>${summary.total} component${summary.total !== 1 ? 's' : ''}</strong> staged</span>
                 `}
