@@ -120,7 +120,16 @@ DIMENSIONS IN DESCRIPTION:
 - If dimensions cannot be determined from the image or package type, you MUST STILL include the placeholder line: "Dimensions: [Pending measurement - L x W x H mm]" so the user can fill it in later.
 - The "description" field MUST ALWAYS conclude with this "Dimensions:" paragraph.
 
-Respond ONLY with a valid, raw JSON object (no explanations, no markdown formatting outside JSON).
+ROBU.IN & DISTRIBUTOR SKU / BARCODE SEARCH GROUNDING:
+- If a barcode, packaging label, or printed sticker from Robu.in (or another component supplier) is visible in the photo:
+  1. Extract the printed SKU code / barcode into "partNumber" (e.g., '1219056' or 'R270708').
+  2. If the label shows "QTY: <number>", populate "estimatedQuantity" with that number.
+  3. If from Robu.in, set "supplierInfo" to "Robu.in".
+  4. Perform Google Search Grounding to look up "site:robu.in <SKU>" or the product code on the web to retrieve the exact official title, specs, pinouts, and dimensions directly from the distributor product page.
+  5. In "datasheetUrl", provide the official product page URL or datasheet URL discovered.
+
+CRITICAL FORMAT REQUIREMENT:
+Even though you are using Google Search Grounding to fetch product details, your final response MUST BE STRICTLY AND ONLY A SINGLE RAW JSON OBJECT (enclosed in { ... }) matching the schema below. Do not return conversational text or markdown explanation outside JSON.
 Required JSON schema:
 {
   "name": "Concise, descriptive component name (e.g., 'NE555 Precision Timer IC' or 'ESP32-WROOM-32D Development Board')",
@@ -158,6 +167,8 @@ export const DEFAULT_AI_SETTINGS = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   // Primary model rate limit (Requests Per Minute, 0 = unlimited)
   primaryRpmLimit: 5,
+  // Live Google Search Grounding for live SKU/Robu product lookups
+  webSearchGrounding: true,
   // Backup / Fallback model configuration
   backupEnabled: true,
   backupProvider: 'gemini',
@@ -434,7 +445,7 @@ export async function testAIConnection(customSettings = null) {
  * Internal helper to dispatch a vision inference request to a specific model configuration.
  */
 async function executeVisionRequest(config, base64Full, categories = [], hint = '') {
-  const { provider, endpoint, apiKey, model, useServerProxy, systemPrompt } = config;
+  const { provider, endpoint, apiKey, model, useServerProxy, systemPrompt, webSearchGrounding } = config;
   const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom;
 
   if (preset.requiresKey && !apiKey) {
@@ -469,11 +480,14 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
   const systemInstructions = baseInstructions + hintSnippet;
 
   let rawResponseText = '';
+  let extractedWebSources = [];
 
   // 1. Google Gemini Native
   if (provider === 'gemini') {
     const cleanEndpoint = (endpoint || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
     const url = `${cleanEndpoint}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const useWebSearch = webSearchGrounding !== false;
+
     const payload = {
       contents: [
         {
@@ -490,19 +504,51 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
       ],
       generationConfig: {
         temperature: 0.1,
-        response_mime_type: 'application/json',
+        // When google_search tool is included, response_mime_type must be omitted to prevent 400 error
+        ...(useWebSearch ? {} : { response_mime_type: 'application/json' }),
       },
+      ...(useWebSearch ? { tools: [{ google_search: {} }] } : {}),
     };
 
-    const data = await dispatchRequest({
-      url,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-      useServerProxy,
-    });
+    let data;
+    try {
+      data = await dispatchRequest({
+        url,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        useServerProxy,
+      });
+    } catch (err) {
+      if (useWebSearch && (String(err).includes('tool') || String(err).includes('search') || String(err).includes('400'))) {
+        console.warn('[AI Service] Web search grounding failed or unsupported, retrying without tools:', err);
+        const fallbackPayload = {
+          ...payload,
+          generationConfig: {
+            temperature: 0.1,
+            response_mime_type: 'application/json',
+          },
+        };
+        delete fallbackPayload.tools;
+        data = await dispatchRequest({
+          url,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: fallbackPayload,
+          useServerProxy,
+        });
+      } else {
+        throw err;
+      }
+    }
 
-    rawResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const candidate = data.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
+    rawResponseText = parts.map(p => p.text || '').filter(Boolean).join('\n');
+
+    // Extract grounding URLs if available
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
+    extractedWebSources = groundingChunks.map(c => c.web?.uri).filter(Boolean);
   } else {
     // 2. OpenAI / OpenRouter / Ollama / Custom
     const headers = { 'Content-Type': 'application/json' };
@@ -576,17 +622,35 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
     description = description ? `${description}\n\n${dimPlaceholder}` : dimPlaceholder;
   }
 
+  const partNumber = (parsed.partNumber || '').trim();
+  let supplierInfo = (parsed.supplierInfo || '').trim();
+  let datasheetUrl = (parsed.datasheetUrl || '').trim();
+
+  // If datasheetUrl is empty, use web sources from Google Search Grounding
+  if (!datasheetUrl && extractedWebSources.length > 0) {
+    const robuSource = extractedWebSources.find(u => u.includes('robu.in'));
+    datasheetUrl = robuSource || extractedWebSources[0];
+  }
+
+  // If Robu packaging was detected or web search hit robu.in, auto-link to Robu product page
+  if (!supplierInfo && (datasheetUrl.includes('robu.in') || extractedWebSources.some(u => u.includes('robu.in')))) {
+    supplierInfo = 'Robu.in';
+  }
+  if (supplierInfo.toLowerCase().includes('robu') && partNumber && !datasheetUrl) {
+    datasheetUrl = `https://robu.in/?s=${encodeURIComponent(partNumber)}&post_type=product`;
+  }
+
   return {
     name: (parsed.name || '').trim(),
-    partNumber: (parsed.partNumber || '').trim(),
+    partNumber,
     category: matchCategory(parsed.category, categories),
     condition: matchedCond,
     estimatedQuantity,
     quantity: estimatedQuantity,
     description,
     tags: Array.isArray(parsed.tags) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
-    supplierInfo: (parsed.supplierInfo || '').trim(),
-    datasheetUrl: (parsed.datasheetUrl || '').trim(),
+    supplierInfo,
+    datasheetUrl,
     notes: (parsed.notes || '').trim(),
     modelUsed: model,
     providerUsed: provider,
@@ -634,6 +698,7 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
     model: settings.model,
     useServerProxy: settings.useServerProxy,
     systemPrompt: settings.systemPrompt,
+    webSearchGrounding: settings.webSearchGrounding !== false,
   };
 
   const backupProvider = settings.backupProvider || settings.provider;
@@ -652,6 +717,7 @@ export async function analyzeComponentImage({ image, categories = [], existingIt
     model: settings.backupModel,
     useServerProxy: settings.backupUseServerProxy !== undefined ? settings.backupUseServerProxy : settings.useServerProxy,
     systemPrompt: settings.systemPrompt,
+    webSearchGrounding: settings.webSearchGrounding !== false,
   };
 
   const hasBackup = settings.backupEnabled && Boolean(settings.backupModel && settings.backupModel.trim());

@@ -81,12 +81,23 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
         ${item.supplierInfo ? `
         <div class="modal-detail-item">
           <div class="modal-detail-label">Supplier</div>
-          <div class="modal-detail-value">${escapeHtml(item.supplierInfo)}</div>
+          <div class="modal-detail-value" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>${escapeHtml(item.supplierInfo)}</span>
+            ${(item.supplierInfo.toLowerCase().includes('robu') && item.partNumber) ? `
+              <a href="https://robu.in/?s=${encodeURIComponent(item.partNumber)}&post_type=product" target="_blank" rel="noopener" style="font-size:11px; color:#0284c7; background:rgba(2,132,199,0.1); border:1px solid rgba(2,132,199,0.25); padding:1px 6px; border-radius:4px; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                🛒 Robu SKU ↗
+              </a>
+            ` : ''}
+          </div>
         </div>` : ''}
         ${item.datasheetUrl ? `
         <div class="modal-detail-item">
-          <div class="modal-detail-label">Datasheet</div>
-          <div class="modal-detail-value"><a href="${escapeHtml(item.datasheetUrl)}" target="_blank" rel="noopener">Open Datasheet ↗</a></div>
+          <div class="modal-detail-label">${item.datasheetUrl.includes('robu.in') ? 'Product Link' : 'Datasheet'}</div>
+          <div class="modal-detail-value">
+            <a href="${escapeHtml(item.datasheetUrl)}" target="_blank" rel="noopener" style="${item.datasheetUrl.includes('robu.in') ? 'color:#0284c7; font-weight:600; display:inline-flex; align-items:center; gap:4px;' : ''}">
+              ${item.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : 'Open Datasheet ↗'}
+            </a>
+          </div>
         </div>` : ''}
         ${item.description ? `
         <div class="modal-detail-item full-width">

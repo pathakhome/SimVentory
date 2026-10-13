@@ -253,11 +253,18 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
               `}
             </div>
 
-            ${item.aiData?.partNumber ? `
-              <span style="font-size: 10px; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 1px 6px; border-radius: 4px;">
-                Barcode Detected
-              </span>
-            ` : ''}
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              ${item.aiData?.partNumber ? `
+                <span style="font-size: 10px; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 1px 6px; border-radius: 4px;">
+                  Barcode Detected
+                </span>
+              ` : ''}
+              ${(item.aiData?.datasheetUrl?.includes('robu.in') || (item.aiData?.supplierInfo?.toLowerCase().includes('robu') && (item.aiData?.partNumber || item.partNumber))) ? `
+                <a href="${escapeAttr(item.aiData?.datasheetUrl || `https://robu.in/?s=${encodeURIComponent(item.aiData?.partNumber || item.partNumber)}&post_type=product`)}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #0284c7; background: rgba(2,132,199,0.1); border: 1px solid rgba(2,132,199,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Robu.in">
+                  🛒 Robu.in ↗
+                </a>
+              ` : ''}
+            </div>
           </div>
 
           <!-- Card Status Indicator -->

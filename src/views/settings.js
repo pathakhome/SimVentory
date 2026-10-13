@@ -292,6 +292,14 @@ export async function renderSettings(container, { refreshView }) {
               </label>
             </div>
 
+            <!-- Live Web Search Grounding Toggle -->
+            <div style="display:flex; align-items:flex-start; gap:8px; margin-top:4px;">
+              <input type="checkbox" id="ai-web-search-check" ${aiSettings.webSearchGrounding !== false ? 'checked' : ''} style="margin-top:3px; accent-color:var(--accent-primary);" />
+              <label for="ai-web-search-check" style="font-size:var(--font-size-xs); color:var(--text-secondary); cursor:pointer;">
+                <strong>🌐 Enable Live Google Search Grounding</strong> (Allows Gemini to search live product pages on Robu.in or distributors to fetch pinouts, exact specs, and physical dimensions using detected packaging SKUs and barcodes).
+              </label>
+            </div>
+
             <!-- Backup / Fallback Model Card -->
             <div style="border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 14px; background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(168,85,247,0.05)); margin-top: 6px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1011,6 +1019,7 @@ export async function renderSettings(container, { refreshView }) {
         model: modelInput.value.trim(),
         useServerProxy: proxyCheck ? proxyCheck.checked : false,
         primaryRpmLimit: primaryRpmInput ? parseInt(primaryRpmInput.value, 10) || 0 : 5,
+        webSearchGrounding: document.getElementById('ai-web-search-check') ? document.getElementById('ai-web-search-check').checked : true,
         backupEnabled: backupToggle ? backupToggle.checked : true,
         backupProvider: backupProviderSelect ? backupProviderSelect.value : 'gemini',
         backupEndpoint: backupEndpointInput ? backupEndpointInput.value.trim() : '',
@@ -1021,7 +1030,7 @@ export async function renderSettings(container, { refreshView }) {
       };
 
       await saveAISettings(config);
-      showToast('AI Settings & Backup Model saved successfully!', 'success');
+      showToast('AI Settings & Grounding preferences saved successfully!', 'success');
     });
   }
 

@@ -222,6 +222,11 @@ export function openAIReviewModal({
                 <input type="checkbox" class="ai-field-check" data-field="supplierInfo" ${aiData.supplierInfo ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
                 Manufacturer / Supplier
               </label>
+              ${aiData.supplierInfo?.toLowerCase().includes('robu') && aiData.partNumber ? `
+                <a href="https://robu.in/?s=${encodeURIComponent(aiData.partNumber)}&post_type=product" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #0284c7; text-decoration: none; font-weight: 600;">
+                  🛒 Robu SKU ↗
+                </a>
+              ` : ''}
             </div>
             <input type="text" id="ai-val-supplierInfo" value="${escapeAttr(aiData.supplierInfo || '')}" class="form-input" style="width: 100%; font-size: var(--font-size-sm);" placeholder="e.g. Texas Instruments, Espressif" />
           </div>
@@ -231,10 +236,12 @@ export function openAIReviewModal({
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer;">
                 <input type="checkbox" class="ai-field-check" data-field="datasheetUrl" ${aiData.datasheetUrl ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
-                Datasheet URL
+                ${aiData.datasheetUrl?.includes('robu.in') ? 'Product Page / Datasheet' : 'Datasheet URL'}
               </label>
               ${aiData.datasheetUrl ? `
-                <a href="${escapeAttr(aiData.datasheetUrl)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: var(--accent-primary-hover); text-decoration: underline;">Test Link ↗</a>
+                <a href="${escapeAttr(aiData.datasheetUrl)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: ${aiData.datasheetUrl.includes('robu.in') ? '#0284c7' : 'var(--accent-primary-hover)'}; text-decoration: ${aiData.datasheetUrl.includes('robu.in') ? 'none' : 'underline'}; font-weight: 600;">
+                  ${aiData.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : 'Test Link ↗'}
+                </a>
               ` : ''}
             </div>
             <input type="url" id="ai-val-datasheetUrl" value="${escapeAttr(aiData.datasheetUrl || '')}" class="form-input" style="width: 100%; font-size: var(--font-size-sm);" placeholder="https://..." />
