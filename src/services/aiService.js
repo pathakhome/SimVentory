@@ -37,11 +37,10 @@ export const PROVIDER_PRESETS = {
       'gemini-2.5-flash-lite',
       'gemini-2.5-pro',
       'gemini-2.0-flash',
-      'gemma-4-31b-it',
     ],
     placeholderKey: 'AIzaSy...',
     requiresKey: true,
-    hint: 'Direct Google AI Studio API. High speed with generous free tier.',
+    hint: 'Direct Google AI Studio API. High speed with generous free tier (Use gemini-2.5-flash).',
   },
   openai: {
     id: 'openai',
@@ -524,7 +523,9 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
   if (provider === 'gemini') {
     const cleanEndpoint = (endpoint || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
     const url = `${cleanEndpoint}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const useWebSearch = webSearchGrounding !== false;
+    // Only native Gemini models (gemini-*) support Google's proprietary search grounding tool
+    const isGeminiFamily = (model || '').toLowerCase().startsWith('gemini');
+    const useWebSearch = webSearchGrounding !== false && isGeminiFamily;
 
     const payload = {
       contents: [
@@ -558,7 +559,7 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
         useServerProxy,
       });
     } catch (err) {
-      if (useWebSearch && (String(err).includes('tool') || String(err).includes('search') || String(err).includes('400'))) {
+      if (useWebSearch && (String(err).includes('tool') || String(err).includes('search') || String(err).includes('400') || String(err).includes('500'))) {
         console.warn('[AI Service] Web search grounding failed or unsupported, retrying without tools:', err);
         const fallbackPayload = {
           ...payload,
