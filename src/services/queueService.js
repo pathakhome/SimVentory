@@ -159,8 +159,11 @@ export async function addFilesToQueue(files, { defaultLocation = 'Unsorted', def
   return newItems;
 }
 
+export const QUEUE_CONCURRENCY = 3;
+
 /**
  * Start or resume background processing of queued items.
+ * Runs up to 3 parallel recognition workers concurrently.
  */
 export async function processQueue() {
   if (isProcessing) return;
@@ -187,69 +190,78 @@ export async function processQueue() {
     const categories = await getCategories();
     const catNames = categories.map(c => c.name);
 
-    while (true) {
-      // Find the next queued item in live queue
-      const target = queue.find(i => i.status === 'queued');
-      if (!target) break;
+    async function worker() {
+      while (true) {
+        // Atomically claim the next queued item synchronously before any await
+        const target = queue.find(i => i.status === 'queued');
+        if (!target) break;
 
-      const itemId = target.id;
-      target.status = 'processing';
-      target.error = null;
-      persistQueue();
+        const itemId = target.id;
+        target.status = 'processing';
+        target.error = null;
+        persistQueue();
 
-      try {
-        const imageBlob = await getImage(itemId);
-        if (!imageBlob) {
-          throw new Error('Image data not found in storage.');
+        try {
+          const imageBlob = await getImage(itemId);
+          if (!imageBlob) {
+            throw new Error('Image data not found in storage.');
+          }
+
+          // 45-second per-item safety timeout so worker never deadlocks
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('AI analysis timed out after 45 seconds')), 45000)
+          );
+
+          const aiResult = await Promise.race([
+            analyzeComponentImage({
+              image: imageBlob,
+              categories: catNames,
+              hint: target.hint || '',
+            }),
+            timeoutPromise,
+          ]);
+
+          // Look up the live item in queue by ID
+          const liveItem = queue.find(i => i.id === itemId);
+          if (!liveItem) {
+            // Item was discarded or queue cleared while AI was running
+            continue;
+          }
+
+          liveItem.status = 'ready';
+          liveItem.aiData = aiResult;
+          liveItem.name = aiResult.name || 'Electronic Component';
+          liveItem.category = aiResult.category || 'Other';
+          liveItem.condition = aiResult.condition || liveItem.condition || 'Unpacked New';
+          liveItem.quantity = (aiResult.estimatedQuantity || aiResult.quantity) || liveItem.quantity || 1;
+          liveItem.partNumber = aiResult.partNumber || '';
+          liveItem.description = aiResult.description || '';
+          liveItem.tags = Array.isArray(aiResult.tags) ? aiResult.tags : [];
+          liveItem.notes = aiResult.notes || '';
+          liveItem.supplierInfo = aiResult.supplierInfo || '';
+          liveItem.datasheetUrl = aiResult.datasheetUrl || '';
+          liveItem.error = null;
+        } catch (err) {
+          console.error(`[QueueService] Error processing item ${itemId}:`, err);
+          const liveItem = queue.find(i => i.id === itemId);
+          if (liveItem) {
+            liveItem.status = 'error';
+            liveItem.error = err.message || 'AI recognition failed';
+          }
         }
 
-        // 45-second per-item safety timeout so queue never deadlocks
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('AI analysis timed out after 45 seconds')), 45000)
-        );
-
-        const aiResult = await Promise.race([
-          analyzeComponentImage({
-            image: imageBlob,
-            categories: catNames,
-            hint: target.hint || '',
-          }),
-          timeoutPromise,
-        ]);
-
-        // Look up the live item in queue by ID
-        const liveItem = queue.find(i => i.id === itemId);
-        if (!liveItem) {
-          // Item was discarded or queue cleared while AI was running
-          continue;
-        }
-
-        liveItem.status = 'ready';
-        liveItem.aiData = aiResult;
-        liveItem.name = aiResult.name || 'Electronic Component';
-        liveItem.category = aiResult.category || 'Other';
-        liveItem.condition = aiResult.condition || liveItem.condition || 'Unpacked New';
-        liveItem.quantity = (aiResult.estimatedQuantity || aiResult.quantity) || liveItem.quantity || 1;
-        liveItem.partNumber = aiResult.partNumber || '';
-        liveItem.description = aiResult.description || '';
-        liveItem.tags = Array.isArray(aiResult.tags) ? aiResult.tags : [];
-        liveItem.notes = aiResult.notes || '';
-        liveItem.supplierInfo = aiResult.supplierInfo || '';
-        liveItem.datasheetUrl = aiResult.datasheetUrl || '';
-        liveItem.error = null;
-      } catch (err) {
-        console.error(`[QueueService] Error processing item ${itemId}:`, err);
-        const liveItem = queue.find(i => i.id === itemId);
-        if (liveItem) {
-          liveItem.status = 'error';
-          liveItem.error = err.message || 'AI recognition failed';
-        }
+        persistQueue();
+        // Brief pause between items per worker
+        await new Promise(r => setTimeout(r, 400));
       }
-
-      persistQueue();
-      // Brief pause between items to respect rate-limits
-      await new Promise(r => setTimeout(r, 600));
     }
+
+    // Launch 3 workers concurrently
+    const workers = [];
+    for (let i = 0; i < QUEUE_CONCURRENCY; i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
   } finally {
     isProcessing = false;
     persistQueue();

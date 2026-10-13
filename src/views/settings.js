@@ -277,9 +277,9 @@ export async function renderSettings(container, { refreshView }) {
                 <span style="font-size:11px; color:var(--text-tertiary);">0 = Disabled</span>
               </label>
               <div style="display:flex; align-items:center; gap:10px;">
-                <input type="number" id="ai-primary-rpm-input" min="0" max="300" value="${aiSettings.primaryRpmLimit !== undefined ? aiSettings.primaryRpmLimit : 15}" style="width: 100px; font-weight:700; font-size:var(--font-size-sm);" />
+                <input type="number" id="ai-primary-rpm-input" min="0" max="300" value="${aiSettings.primaryRpmLimit !== undefined ? aiSettings.primaryRpmLimit : 5}" style="width: 100px; font-weight:700; font-size:var(--font-size-sm);" />
                 <span style="font-size:11px; color:var(--text-secondary);">
-                  e.g. <strong>15 RPM</strong> for Gemini free tier. When limit is reached, requests automatically switch to the Backup Model.
+                  e.g. <strong>5 RPM</strong> (recommended for 3 parallel queue workers). When limit is reached, requests automatically switch to the Backup Model.
                 </span>
               </div>
             </div>
@@ -1010,7 +1010,7 @@ export async function renderSettings(container, { refreshView }) {
         apiKey: apiKeyInput.value.trim(),
         model: modelInput.value.trim(),
         useServerProxy: proxyCheck ? proxyCheck.checked : false,
-        primaryRpmLimit: primaryRpmInput ? parseInt(primaryRpmInput.value, 10) || 0 : 15,
+        primaryRpmLimit: primaryRpmInput ? parseInt(primaryRpmInput.value, 10) || 0 : 5,
         backupEnabled: backupToggle ? backupToggle.checked : true,
         backupProvider: backupProviderSelect ? backupProviderSelect.value : 'gemini',
         backupEndpoint: backupEndpointInput ? backupEndpointInput.value.trim() : '',

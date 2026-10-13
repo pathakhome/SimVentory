@@ -157,7 +157,7 @@ export const DEFAULT_AI_SETTINGS = {
   useServerProxy: false,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   // Primary model rate limit (Requests Per Minute, 0 = unlimited)
-  primaryRpmLimit: 15,
+  primaryRpmLimit: 5,
   // Backup / Fallback model configuration
   backupEnabled: true,
   backupProvider: 'gemini',
@@ -175,7 +175,7 @@ const primaryRequestTimestamps = [];
  * @param {number} rpmLimit 
  * @returns {{ currentCount: number, rpmLimit: number, isLimitReached: boolean, availableInSeconds: number }}
  */
-export function getPrimaryRpmStatus(rpmLimit = 15) {
+export function getPrimaryRpmStatus(rpmLimit = 5) {
   const now = Date.now();
   while (primaryRequestTimestamps.length > 0 && now - primaryRequestTimestamps[0] > 60000) {
     primaryRequestTimestamps.shift();
