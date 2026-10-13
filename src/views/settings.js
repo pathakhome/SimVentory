@@ -256,17 +256,15 @@ export async function renderSettings(container, { refreshView }) {
               </div>
             </div>
 
-            <!-- Model Name -->
+            <!-- Model Name (Text-only with autocomplete) -->
             <div>
               <label class="form-label" style="font-size:var(--font-size-xs);">Vision Model Name</label>
-              <input type="text" id="ai-model-input" value="${escapeAttr(aiSettings.model)}" placeholder="e.g. google/gemini-2.0-flash-001" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
-              
-              <!-- Quick suggested model chips -->
-              <div id="ai-suggested-models" style="display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-                <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
-                ${(currentPreset.suggestedModels || []).map(m => `
-                  <button type="button" class="btn-preset-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
-                `).join('')}
+              <input type="text" id="ai-model-input" value="${escapeAttr(aiSettings.model)}" placeholder="e.g. gemma-4-31b-it or gemini-2.5-flash" list="ai-model-datalist" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+              <datalist id="ai-model-datalist">
+                ${(currentPreset.suggestedModels || []).map(m => `<option value="${escapeAttr(m)}"></option>`).join('')}
+              </datalist>
+              <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">
+                Text-only input — type or paste <strong>any custom model identifier</strong> of your choice (e.g. <code>gemma-4-31b-it</code>, <code>gemini-2.5-flash</code>, <code>meta-llama/llama-3.2-11b-vision-instruct</code>, <code>gpt-4o-mini</code>).
               </div>
             </div>
 
@@ -330,16 +328,15 @@ export async function renderSettings(container, { refreshView }) {
                   </select>
                 </div>
 
-                <!-- Backup Model Name -->
+                <!-- Backup Model Name (Text-only with autocomplete) -->
                 <div>
                   <label class="form-label" style="font-size:var(--font-size-xs);">Backup Model Name</label>
-                  <input type="text" id="ai-backup-model-input" value="${escapeAttr(aiSettings.backupModel || 'gemini-1.5-flash')}" placeholder="e.g. gemini-1.5-flash" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
-                  
-                  <div id="ai-backup-suggested-models" style="display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
-                    <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
-                    ${((PROVIDER_PRESETS[aiSettings.backupProvider || 'gemini'] || PROVIDER_PRESETS.gemini).suggestedModels || []).map(m => `
-                      <button type="button" class="btn-preset-backup-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
-                    `).join('')}
+                  <input type="text" id="ai-backup-model-input" value="${escapeAttr(aiSettings.backupModel || 'gemini-2.0-flash')}" placeholder="e.g. gemini-2.0-flash or gemma-4-31b-it" list="ai-backup-model-datalist" style="width:100%; font-family:monospace; font-size:var(--font-size-sm);" />
+                  <datalist id="ai-backup-model-datalist">
+                    ${((PROVIDER_PRESETS[aiSettings.backupProvider || 'gemini'] || PROVIDER_PRESETS.gemini).suggestedModels || []).map(m => `<option value="${escapeAttr(m)}"></option>`).join('')}
+                  </datalist>
+                  <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">
+                    Text-only input — type or paste any fallback model of your choice.
                   </div>
                 </div>
 
@@ -817,17 +814,7 @@ export async function renderSettings(container, { refreshView }) {
   const modelInput = document.getElementById('ai-model-input');
   const providerHint = document.getElementById('ai-provider-hint');
   const keyHint = document.getElementById('ai-key-hint');
-  const suggestedModelsContainer = document.getElementById('ai-suggested-models');
   const proxyCheck = document.getElementById('ai-server-proxy-check');
-
-  function bindModelChipListeners() {
-    container.querySelectorAll('.btn-preset-model').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (modelInput) modelInput.value = btn.dataset.model;
-      });
-    });
-  }
-  bindModelChipListeners();
 
   if (providerSelect) {
     providerSelect.addEventListener('change', () => {
@@ -835,8 +822,12 @@ export async function renderSettings(container, { refreshView }) {
       const preset = PROVIDER_PRESETS[selectedId] || PROVIDER_PRESETS.custom;
 
       if (preset.endpoint) endpointInput.value = preset.endpoint;
-      if (preset.defaultModel) modelInput.value = preset.defaultModel;
       if (preset.placeholderKey) apiKeyInput.placeholder = preset.placeholderKey;
+
+      // Only populate default if model input is empty, preserving user's custom typed model
+      if (preset.defaultModel && !modelInput.value.trim()) {
+        modelInput.value = preset.defaultModel;
+      }
 
       if (providerHint) providerHint.textContent = preset.hint;
       if (keyHint) keyHint.textContent = preset.requiresKey ? 'Required' : 'Optional / Not needed';
@@ -846,14 +837,10 @@ export async function renderSettings(container, { refreshView }) {
         proxyCheck.checked = true;
       }
 
-      if (suggestedModelsContainer) {
-        suggestedModelsContainer.innerHTML = `
-          <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
-          ${(preset.suggestedModels || []).map(m => `
-            <button type="button" class="btn-preset-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
-          `).join('')}
-        `;
-        bindModelChipListeners();
+      // Update datalist autocomplete options for the new provider
+      const datalist = document.getElementById('ai-model-datalist');
+      if (datalist) {
+        datalist.innerHTML = (preset.suggestedModels || []).map(m => `<option value="${escapeAttr(m)}"></option>`).join('');
       }
     });
   }
@@ -871,17 +858,7 @@ export async function renderSettings(container, { refreshView }) {
   const backupEndpointInput = document.getElementById('ai-backup-endpoint-input');
   const backupApiKeyInput = document.getElementById('ai-backup-apikey-input');
   const backupProxyCheck = document.getElementById('ai-backup-proxy-check');
-  const backupSuggestedContainer = document.getElementById('ai-backup-suggested-models');
   const testBackupBtn = document.getElementById('ai-test-backup-btn');
-
-  function bindBackupModelChips() {
-    container.querySelectorAll('.btn-preset-backup-model').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (backupModelInput) backupModelInput.value = btn.dataset.model;
-      });
-    });
-  }
-  bindBackupModelChips();
 
   if (backupToggle && backupTrack && backupThumb && backupFieldsContainer) {
     backupToggle.addEventListener('change', () => {
@@ -898,16 +875,13 @@ export async function renderSettings(container, { refreshView }) {
       const preset = PROVIDER_PRESETS[selectedId] || PROVIDER_PRESETS.custom;
 
       if (preset.endpoint && backupEndpointInput) backupEndpointInput.value = preset.endpoint;
-      if (preset.defaultModel && backupModelInput) backupModelInput.value = preset.defaultModel;
+      if (preset.defaultModel && !backupModelInput.value.trim()) {
+        backupModelInput.value = preset.defaultModel;
+      }
 
-      if (backupSuggestedContainer) {
-        backupSuggestedContainer.innerHTML = `
-          <span style="font-size:11px; color:var(--text-tertiary);">Quick select:</span>
-          ${(preset.suggestedModels || []).map(m => `
-            <button type="button" class="btn-preset-backup-model" data-model="${escapeAttr(m)}" style="background:var(--bg-card); border:1px solid var(--border-secondary); border-radius:4px; padding:2px 8px; font-size:11px; font-family:monospace; cursor:pointer; color:var(--text-secondary);">${escapeHtml(m)}</button>
-          `).join('')}
-        `;
-        bindBackupModelChips();
+      const backupDatalist = document.getElementById('ai-backup-model-datalist');
+      if (backupDatalist) {
+        backupDatalist.innerHTML = (preset.suggestedModels || []).map(m => `<option value="${escapeAttr(m)}"></option>`).join('');
       }
     });
   }

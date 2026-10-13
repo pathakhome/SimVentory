@@ -264,6 +264,11 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                   🛒 Robu.in ↗
                 </a>
               ` : ''}
+              ${(item.aiData?.datasheetUrl?.includes('hubtronics.in') || (item.aiData?.supplierInfo?.toLowerCase().includes('hubtronics'))) ? `
+                <a href="${escapeAttr(item.aiData?.datasheetUrl || `https://hubtronics.in/index.php?route=product/search&search=${encodeURIComponent(item.name || item.partNumber)}`)}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Hubtronics">
+                  🛒 Hubtronics ↗
+                </a>
+              ` : ''}
             </div>
           </div>
 

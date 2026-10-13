@@ -12,37 +12,32 @@ export const PROVIDER_PRESETS = {
     id: 'openrouter',
     name: 'OpenRouter (Multi-model & Free tiers)',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-    defaultModel: 'google/gemini-2.0-flash-001',
+    defaultModel: 'google/gemini-2.5-flash',
     suggestedModels: [
-      'google/gemini-3.1-flash-lite',
-      'google/gemini-3.5-flash-lite',
-      'google/gemma-4',
       'google/gemini-2.5-flash',
+      'google/gemini-2.5-flash-lite',
+      'google/gemini-2.5-pro',
+      'google/gemma-4-31b-it',
       'google/gemini-2.0-flash-001',
-      'google/gemini-flash-1.5',
       'meta-llama/llama-3.2-11b-vision-instruct',
-      'qwen/qwen-2.5-vl-72b-instruct:free',
+      'qwen/qwen-2.5-vl-72b-instruct',
       'openai/gpt-4o-mini',
     ],
     placeholderKey: 'sk-or-v1-...',
     requiresKey: true,
-    hint: 'Unified gateway for Gemini, Llama 3.2 Vision, Qwen VL & GPT-4o-mini.',
+    hint: 'Unified gateway for Gemini, Llama 3.2 Vision, Qwen VL, Gemma 4 & GPT-4o-mini.',
   },
   gemini: {
     id: 'gemini',
     name: 'Google Gemini (Native Google AI Studio)',
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
-    defaultModel: 'gemini-3.1-flash-lite',
+    defaultModel: 'gemini-2.5-flash',
     suggestedModels: [
-      'gemini-3.1-flash-lite',
-      'gemini-3.5-flash-lite',
-      'gemma-4',
       'gemini-2.5-flash',
       'gemini-2.5-flash-lite',
+      'gemini-2.5-pro',
       'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro',
+      'gemma-4-31b-it',
     ],
     placeholderKey: 'AIzaSy...',
     requiresKey: true,
@@ -67,7 +62,7 @@ export const PROVIDER_PRESETS = {
     endpoint: 'http://localhost:11434/v1/chat/completions',
     defaultModel: 'llama3.2-vision:latest',
     suggestedModels: [
-      'gemma-4',
+      'gemma-4-31b-it',
       'llama3.2-vision:latest',
       'minicpm-v:latest',
       'llava:latest',
@@ -135,6 +130,21 @@ ROBU.IN "WH/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
     * The exact product page URL on robu.in for "datasheetUrl".
 - If the label also shows "QTY: <number>", populate "estimatedQuantity" with that number (default to 1 if not specified).
 
+HUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
+- Hubtronics uses a white barcode label on its sealed component bags:
+  1. Top: Warehouse inward tracking line containing "RTB/IN-" or "RTB/IN" (e.g. 'RTB/IN-27134').
+  2. Second line: Numeric item code / barcode (e.g., '1927766437').
+  3. Barcode: 1D linear barcode.
+  4. Product description: Explicitly printed in English directly below the barcode (e.g., 'MAX98357 I2S 3W Class D Audio Decoder Module').
+  5. Bottom line: Storage bin/shelf code (e.g., 'B-11-H').
+- When you see a label with "RTB/IN" or "RTB/IN-":
+  - SUPPLIER: Set "supplierInfo": "Hubtronics".
+  - SKU / PART NUMBER: Extract the numeric item code directly below RTB/IN (e.g., '1927766437') or the component IC part number (e.g., 'MAX98357') into "partNumber". Do NOT put 'RTB/IN-27134' in "partNumber".
+  - NAME: Use the printed product title from the label (e.g. 'MAX98357 I2S 3W Class D Audio Decoder Module').
+  - CONDITION: Set "condition": "Packed" (since it is sealed in the distributor pouch).
+  - SEARCH GROUNDING: Use Google Search Grounding to search 'site:hubtronics.in "<Title or SKU>"' or 'hubtronics <Title>' to retrieve full operating voltages, amplifier/chip specifications, pinouts, and dimensions.
+  - DATASHEET / URL: Provide the official Hubtronics product page URL if discovered, or 'https://hubtronics.in/index.php?route=product/search&search=<Title>'.
+
 CRITICAL FORMAT REQUIREMENT:
 Even though you are using Google Search Grounding to fetch product details, your final response MUST BE STRICTLY AND ONLY A SINGLE RAW JSON OBJECT (enclosed in { ... }) matching the schema below. Do not return conversational text or markdown explanation outside JSON.
 Required JSON schema:
@@ -169,7 +179,7 @@ export const DEFAULT_AI_SETTINGS = {
   provider: 'gemini',
   endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
   apiKey: '',
-  model: 'gemini-2.0-flash',
+  model: 'gemini-2.5-flash',
   useServerProxy: false,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   // Primary model rate limit (Requests Per Minute, 0 = unlimited)
@@ -181,7 +191,7 @@ export const DEFAULT_AI_SETTINGS = {
   backupProvider: 'gemini',
   backupEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
   backupApiKey: '',
-  backupModel: 'gemini-1.5-flash',
+  backupModel: 'gemini-2.0-flash',
   backupUseServerProxy: false,
 };
 
@@ -494,6 +504,17 @@ If the label shows a barcode, a bold 4 to 7 digit number (e.g. 44258), and a lin
 5. DATASHEET: Set "datasheetUrl" to the live Robu product page.`;
   }
 
+  if (!baseInstructions.toLowerCase().includes('rtb/in')) {
+    baseInstructions += `\n\nHUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE:
+If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.g. 1927766437), or printed product description:
+1. SUPPLIER: Set "supplierInfo": "Hubtronics".
+2. SKU: Extract the numeric item code directly below RTB/IN (e.g. "1927766437") or component IC part number as "partNumber".
+3. NAME: Use the printed product title from the label if visible.
+4. SEARCH GROUNDING: Use Google Search Grounding to search 'site:hubtronics.in <Title or SKU>' or 'hubtronics <Title>' to retrieve full operating voltages, amplifier/chip specifications, pinouts, and dimensions.
+5. CONDITION: Set "condition": "Packed".
+6. DATASHEET: Set "datasheetUrl" to the Hubtronics product page.`;
+  }
+
   const systemInstructions = baseInstructions + hintSnippet;
 
   let rawResponseText = '';
@@ -673,8 +694,8 @@ If the label shows a barcode, a bold 4 to 7 digit number (e.g. 44258), and a lin
 
   // If datasheetUrl is empty, use web sources from Google Search Grounding
   if (!datasheetUrl && extractedWebSources.length > 0) {
-    const robuSource = extractedWebSources.find(u => u.includes('robu.in'));
-    datasheetUrl = robuSource || extractedWebSources[0];
+    const distributorSource = extractedWebSources.find(u => u.includes('robu.in') || u.includes('hubtronics.in'));
+    datasheetUrl = distributorSource || extractedWebSources[0];
   }
 
   // If Robu packaging was detected or web search hit robu.in, auto-link to Robu product page
@@ -683,6 +704,45 @@ If the label shows a barcode, a bold 4 to 7 digit number (e.g. 44258), and a lin
   }
   if (supplierInfo.toLowerCase().includes('robu') && partNumber && !datasheetUrl) {
     datasheetUrl = `https://robu.in/?s=${encodeURIComponent(partNumber)}&post_type=product`;
+  }
+
+  // Detect Hubtronics.in RTB/IN warehouse inward barcode signature
+  const isHubtronics = /RTB\s*[\/\\]\s*IN/i.test(rawResponseText) ||
+                       /RTB\s*[\/\\]\s*IN/i.test(parsed.notes || '') ||
+                       /RTB\s*[\/\\]\s*IN/i.test(partNumber) ||
+                       /hubtronics/i.test(rawResponseText);
+
+  if (isHubtronics) {
+    if (!supplierInfo) supplierInfo = 'Hubtronics';
+    if (matchedCond === 'Unpacked New') {
+      matchedCond = 'Packed';
+    }
+  }
+
+  // If partNumber captured RTB/IN-..., strip it and extract clean numeric code (e.g. 1927766437)
+  if (/RTB\s*[\/\\]\s*IN/i.test(partNumber)) {
+    const numMatch = partNumber.match(/\b(\d{6,12})\b/);
+    partNumber = numMatch ? numMatch[1] : '';
+  }
+
+  // If partNumber was missed but Hubtronics detected, look for 6-12 digit barcode or IC code
+  if (!partNumber && isHubtronics) {
+    const codeMatch = rawResponseText.match(/\b(\d{8,12})\b/) ||
+                     rawResponseText.match(/RTB\s*[\/\\]\s*IN[^\n]*\n\s*(\d+)/i);
+    if (codeMatch) {
+      partNumber = codeMatch[1];
+    }
+  }
+
+  // Auto-link to Hubtronics search if supplier is Hubtronics or hubtronics.in in web sources
+  if (!supplierInfo && (datasheetUrl.includes('hubtronics.in') || extractedWebSources.some(u => u.includes('hubtronics.in')))) {
+    supplierInfo = 'Hubtronics';
+  }
+  if (supplierInfo.toLowerCase().includes('hubtronics') && !datasheetUrl) {
+    const searchTarget = (parsed.name || partNumber || '').trim();
+    if (searchTarget) {
+      datasheetUrl = `https://hubtronics.in/index.php?route=product/search&search=${encodeURIComponent(searchTarget)}`;
+    }
   }
 
   return {

@@ -227,6 +227,11 @@ export function openAIReviewModal({
                   🛒 Robu SKU ↗
                 </a>
               ` : ''}
+              ${aiData.supplierInfo?.toLowerCase().includes('hubtronics') ? `
+                <a href="https://hubtronics.in/index.php?route=product/search&search=${encodeURIComponent(aiData.name || aiData.partNumber)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #f59e0b; text-decoration: none; font-weight: 600;">
+                  🛒 Hubtronics ↗
+                </a>
+              ` : ''}
             </div>
             <input type="text" id="ai-val-supplierInfo" value="${escapeAttr(aiData.supplierInfo || '')}" class="form-input" style="width: 100%; font-size: var(--font-size-sm);" placeholder="e.g. Texas Instruments, Espressif" />
           </div>
@@ -236,11 +241,11 @@ export function openAIReviewModal({
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--font-size-sm); color: var(--text-primary); cursor: pointer;">
                 <input type="checkbox" class="ai-field-check" data-field="datasheetUrl" ${aiData.datasheetUrl ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
-                ${aiData.datasheetUrl?.includes('robu.in') ? 'Product Page / Datasheet' : 'Datasheet URL'}
+                ${(aiData.datasheetUrl?.includes('robu.in') || aiData.datasheetUrl?.includes('hubtronics.in')) ? 'Product Page / Datasheet' : 'Datasheet URL'}
               </label>
               ${aiData.datasheetUrl ? `
-                <a href="${escapeAttr(aiData.datasheetUrl)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: ${aiData.datasheetUrl.includes('robu.in') ? '#0284c7' : 'var(--accent-primary-hover)'}; text-decoration: ${aiData.datasheetUrl.includes('robu.in') ? 'none' : 'underline'}; font-weight: 600;">
-                  ${aiData.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : 'Test Link ↗'}
+                <a href="${escapeAttr(aiData.datasheetUrl)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: ${aiData.datasheetUrl.includes('robu.in') ? '#0284c7' : aiData.datasheetUrl.includes('hubtronics.in') ? '#f59e0b' : 'var(--accent-primary-hover)'}; text-decoration: ${(aiData.datasheetUrl.includes('robu.in') || aiData.datasheetUrl.includes('hubtronics.in')) ? 'none' : 'underline'}; font-weight: 600;">
+                  ${aiData.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : aiData.datasheetUrl.includes('hubtronics.in') ? '🛒 View on Hubtronics ↗' : 'Test Link ↗'}
                 </a>
               ` : ''}
             </div>

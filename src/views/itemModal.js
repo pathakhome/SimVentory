@@ -88,14 +88,19 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
                 🛒 Robu SKU ↗
               </a>
             ` : ''}
+            ${(item.supplierInfo.toLowerCase().includes('hubtronics')) ? `
+              <a href="https://hubtronics.in/index.php?route=product/search&search=${encodeURIComponent(item.name || item.partNumber)}" target="_blank" rel="noopener" style="font-size:11px; color:#f59e0b; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.25); padding:1px 6px; border-radius:4px; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                🛒 Hubtronics ↗
+              </a>
+            ` : ''}
           </div>
         </div>` : ''}
         ${item.datasheetUrl ? `
         <div class="modal-detail-item">
-          <div class="modal-detail-label">${item.datasheetUrl.includes('robu.in') ? 'Product Link' : 'Datasheet'}</div>
+          <div class="modal-detail-label">${(item.datasheetUrl.includes('robu.in') || item.datasheetUrl.includes('hubtronics.in')) ? 'Product Link' : 'Datasheet'}</div>
           <div class="modal-detail-value">
-            <a href="${escapeHtml(item.datasheetUrl)}" target="_blank" rel="noopener" style="${item.datasheetUrl.includes('robu.in') ? 'color:#0284c7; font-weight:600; display:inline-flex; align-items:center; gap:4px;' : ''}">
-              ${item.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : 'Open Datasheet ↗'}
+            <a href="${escapeHtml(item.datasheetUrl)}" target="_blank" rel="noopener" style="${(item.datasheetUrl.includes('robu.in') || item.datasheetUrl.includes('hubtronics.in')) ? 'font-weight:600; display:inline-flex; align-items:center; gap:4px;' : ''}">
+              ${item.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : item.datasheetUrl.includes('hubtronics.in') ? '🛒 View on Hubtronics ↗' : 'Open Datasheet ↗'}
             </a>
           </div>
         </div>` : ''}
