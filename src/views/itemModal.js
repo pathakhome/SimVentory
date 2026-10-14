@@ -84,7 +84,7 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
           <div class="modal-detail-value" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             <span>${escapeHtml(item.supplierInfo)}</span>
             ${(item.supplierInfo.toLowerCase().includes('robu') && item.partNumber) ? `
-              <a href="https://robu.in/?s=${encodeURIComponent(item.partNumber)}&post_type=product" target="_blank" rel="noopener" style="font-size:11px; color:#0284c7; background:rgba(2,132,199,0.1); border:1px solid rgba(2,132,199,0.25); padding:1px 6px; border-radius:4px; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+              <a href="https://robu.in/?s=${encodeURIComponent(item.partNumber)}" target="_blank" rel="noopener" style="font-size:11px; color:#0284c7; background:rgba(2,132,199,0.1); border:1px solid rgba(2,132,199,0.25); padding:1px 6px; border-radius:4px; text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
                 🛒 Robu SKU ↗
               </a>
             ` : ''}
@@ -99,7 +99,7 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
         <div class="modal-detail-item">
           <div class="modal-detail-label">${(item.datasheetUrl.includes('robu.in') || item.datasheetUrl.includes('hubtronics.in')) ? 'Product Link' : 'Datasheet'}</div>
           <div class="modal-detail-value">
-            <a href="${escapeHtml(item.datasheetUrl)}" target="_blank" rel="noopener" style="${(item.datasheetUrl.includes('robu.in') || item.datasheetUrl.includes('hubtronics.in')) ? 'font-weight:600; display:inline-flex; align-items:center; gap:4px;' : ''}">
+            <a href="${escapeHtml(item.datasheetUrl.includes('robu.in') ? item.datasheetUrl.replace(/[?&]post_type=product/g, '').replace('?&', '?') : item.datasheetUrl)}" target="_blank" rel="noopener" style="${(item.datasheetUrl.includes('robu.in') || item.datasheetUrl.includes('hubtronics.in')) ? 'font-weight:600; display:inline-flex; align-items:center; gap:4px;' : ''}">
               ${item.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : item.datasheetUrl.includes('hubtronics.in') ? '🛒 View on Hubtronics ↗' : 'Open Datasheet ↗'}
             </a>
           </div>

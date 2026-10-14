@@ -48,6 +48,17 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     }
   }
 
+  function getRobuLinkUrl(item) {
+    const rawUrl = item.aiData?.datasheetUrl;
+    if (rawUrl && rawUrl.includes('robu.in')) {
+      return rawUrl.replace(/[?&]post_type=product/g, '').replace('?&', '?');
+    }
+    const sku = (item.aiData?.partNumber || item.partNumber || '').trim();
+    const numericSku = sku.match(/\b(\d{4,8})\b/);
+    const cleanSku = numericSku ? numericSku[1] : sku;
+    return `https://robu.in/?s=${encodeURIComponent(cleanSku)}`;
+  }
+
   function render() {
     const items = getQueueItems();
     const summary = getQueueSummary();
@@ -61,7 +72,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             <h1>AI Intake Queue</h1>
             <p>Upload photos in bulk, process with AI in the background, and review before adding to inventory</p>
           </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <div id="queue-header-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
             ${summary.ready > 0 ? `
               <button class="btn btn-primary btn-sm" id="btn-approve-all" style="background: linear-gradient(135deg, #10b981, #059669); border: none; display: inline-flex; align-items: center; gap: 6px;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -161,9 +172,9 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
 
         <!-- Processing Progress & Summary Bar -->
         ${summary.total > 0 ? `
-          <div style="background: var(--bg-card); border: 1px solid var(--border-secondary); border-radius: var(--border-radius-md); padding: 14px 18px; margin-bottom: 20px;">
+          <div id="queue-summary-box" style="background: var(--bg-card); border: 1px solid var(--border-secondary); border-radius: var(--border-radius-md); padding: 14px 18px; margin-bottom: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-              <div style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <div id="queue-status-text" style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
                 ${summary.isProcessing ? `
                   <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                   <span>Processing queue: <strong>${summary.ready + summary.error} / ${summary.total}</strong> (${percent}%)</span>
@@ -172,7 +183,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                   <span>Queue Status: <strong>${summary.total} component${summary.total !== 1 ? 's' : ''}</strong> staged</span>
                 `}
               </div>
-              <div style="display: flex; gap: 12px; font-size: 11.5px; color: var(--text-secondary);">
+              <div id="queue-status-counts" style="display: flex; gap: 12px; font-size: 11.5px; color: var(--text-secondary);">
                 <span>✅ <strong>${summary.ready}</strong> Ready</span>
                 <span>⏳ <strong>${summary.queued}</strong> Queued</span>
                 ${summary.error > 0 ? `<span style="color: var(--accent-danger);">⚠️ <strong>${summary.error}</strong> Failed</span>` : ''}
@@ -181,7 +192,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             
             <!-- Progress Bar -->
             <div style="width: 100%; height: 6px; background: var(--bg-tertiary); border-radius: 99px; overflow: hidden;">
-              <div style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.3s ease;"></div>
+              <div id="queue-progress-bar-fill" style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.3s ease;"></div>
             </div>
           </div>
         ` : ''}
@@ -211,6 +222,10 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     const isReady = item.status === 'ready';
     const isProcessing = item.status === 'processing';
     const isError = item.status === 'error';
+    const isRobu = Boolean((item.aiData?.datasheetUrl && item.aiData.datasheetUrl.includes('robu.in')) ||
+                           (String(item.aiData?.supplierInfo || item.supplierInfo || '').toLowerCase().includes('robu') && (item.aiData?.partNumber || item.partNumber)));
+    const isHubtronics = Boolean((item.aiData?.datasheetUrl && item.aiData.datasheetUrl.includes('hubtronics.in')) ||
+                                 (String(item.aiData?.supplierInfo || item.supplierInfo || '').toLowerCase().includes('hubtronics')));
 
     return `
       <div class="queue-card" data-item-id="${item.id}" style="background: var(--bg-card); border: 1px solid ${isReady ? 'rgba(16,185,129,0.3)' : (isError ? 'rgba(239,68,68,0.3)' : 'var(--border-secondary)')}; border-radius: var(--border-radius-md); padding: 16px; display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; transition: all 0.2s ease;">
@@ -230,7 +245,7 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
         <div style="flex: 1; min-width: 250px;">
           <!-- Top Row: Status Pill & Model -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
+            <div class="queue-card-status-pill" style="display: flex; align-items: center; gap: 6px;">
               ${isReady ? `
                 <span style="font-size: 11px; font-weight: 600; color: #10b981; background: rgba(16,185,129,0.12); padding: 2px 8px; border-radius: 99px; display: inline-flex; align-items: center; gap: 4px;">
                   ✓ Ready for Vault
@@ -254,18 +269,18 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
               `}
             </div>
 
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <div class="queue-card-links" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
               ${item.aiData?.partNumber ? `
                 <span style="font-size: 10px; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 1px 6px; border-radius: 4px;">
                   Barcode Detected
                 </span>
               ` : ''}
-              ${(item.aiData?.datasheetUrl?.includes('robu.in') || (item.aiData?.supplierInfo?.toLowerCase().includes('robu') && (item.aiData?.partNumber || item.partNumber))) ? `
-                <a href="${escapeAttr(item.aiData?.datasheetUrl || `https://robu.in/?s=${encodeURIComponent(item.aiData?.partNumber || item.partNumber)}&post_type=product`)}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #0284c7; background: rgba(2,132,199,0.1); border: 1px solid rgba(2,132,199,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Robu.in">
+              ${isRobu ? `
+                <a href="${escapeAttr(getRobuLinkUrl(item))}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #0284c7; background: rgba(2,132,199,0.1); border: 1px solid rgba(2,132,199,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Robu.in">
                   🛒 Robu.in ↗
                 </a>
               ` : ''}
-              ${(item.aiData?.datasheetUrl?.includes('hubtronics.in') || (item.aiData?.supplierInfo?.toLowerCase().includes('hubtronics'))) ? `
+              ${isHubtronics ? `
                 <a href="${escapeAttr(item.aiData?.datasheetUrl || `https://hubtronics.in/index.php?route=product/search&search=${encodeURIComponent(item.name || item.partNumber)}`)}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Hubtronics">
                   🛒 Hubtronics ↗
                 </a>
@@ -274,20 +289,22 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
           </div>
 
           <!-- Card Status Indicator -->
-          ${isError ? `
-            <div style="font-size: var(--font-size-xs); color: var(--accent-danger); margin-bottom: 8px;">
-              ${escapeHtml(item.fileName)} • Error: ${escapeHtml(item.error)}
-            </div>
-          ` : isProcessing ? `
-            <div style="font-size: var(--font-size-xs); color: var(--accent-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-              <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              <span>${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Analyzing with AI in background...</span>
-            </div>
-          ` : !isReady ? `
-            <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 8px;">
-              ${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Waiting in queue...
-            </div>
-          ` : ''}
+          <div class="queue-card-submsg">
+            ${isError ? `
+              <div style="font-size: var(--font-size-xs); color: var(--accent-danger); margin-bottom: 8px;">
+                ${escapeHtml(item.fileName)} • Error: ${escapeHtml(item.error)}
+              </div>
+            ` : isProcessing ? `
+              <div style="font-size: var(--font-size-xs); color: var(--accent-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <span>${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Analyzing with AI in background...</span>
+              </div>
+            ` : !isReady ? `
+              <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 8px;">
+                ${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Waiting in queue...
+              </div>
+            ` : ''}
+          </div>
 
           <!-- Editable Fields on Card -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px;">
@@ -327,14 +344,16 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             </div>
           </div>
 
-          ${isReady && item.tags && item.tags.length > 0 ? `
-            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
-              ${item.tags.slice(0, 5).map(t => `<span style="font-size: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); padding: 1px 6px; border-radius: 4px;">${escapeHtml(t)}</span>`).join('')}
-            </div>
-          ` : ''}
+          <div class="queue-card-tags">
+            ${isReady && item.tags && item.tags.length > 0 ? `
+              <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
+                ${item.tags.slice(0, 5).map(t => `<span style="font-size: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); padding: 1px 6px; border-radius: 4px;">${escapeHtml(t)}</span>`).join('')}
+              </div>
+            ` : ''}
+          </div>
 
           <!-- Bottom Card Action Controls -->
-          <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-end; border-top: 1px solid var(--border-primary); padding-top: 10px;">
+          <div class="queue-card-actions" style="display: flex; gap: 8px; align-items: center; justify-content: flex-end; border-top: 1px solid var(--border-primary); padding-top: 10px;">
             ${isReady ? `
               <button type="button" class="btn btn-secondary btn-sm btn-inspect-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -356,6 +375,421 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
         </div>
       </div>
     `;
+  }
+
+  function bindCardActionButtons(card, id) {
+    const approveBtn = card.querySelector('.btn-approve-queue');
+    if (approveBtn && !approveBtn._bound) {
+      approveBtn._bound = true;
+      approveBtn.addEventListener('click', async () => {
+        const nameVal = card.querySelector('.queue-item-name')?.value.trim();
+        const locVal = card.querySelector('.queue-item-location')?.value.trim();
+        const catVal = card.querySelector('.queue-item-cat')?.value;
+        const condVal = card.querySelector('.queue-item-condition')?.value;
+        const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10) || 1;
+        const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
+
+        if (!nameVal) {
+          showToast('Component name is required', 'warning');
+          return;
+        }
+        if (!locVal) {
+          showToast('Storage location is required', 'warning');
+          card.querySelector('.queue-item-location')?.focus();
+          return;
+        }
+
+        try {
+          const saved = await approveQueueItem(id, {
+            name: nameVal,
+            location: locVal,
+            category: catVal,
+            condition: condVal,
+            quantity: qtyVal,
+            partNumber: partVal,
+          });
+          showToast(`✓ "${saved.name}" added to vault!`, 'success');
+          if (refreshView) refreshView();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    }
+
+    const inspectBtn = card.querySelector('.btn-inspect-queue');
+    if (inspectBtn && !inspectBtn._bound) {
+      inspectBtn._bound = true;
+      inspectBtn.addEventListener('click', async () => {
+        const item = getQueueItems().find(i => i.id === id);
+        if (!item || !item.aiData) return;
+
+        openAIReviewModal({
+          aiData: item.aiData,
+          imageSrc: cachedThumbnailURLs[id],
+          categories,
+          onApply: async (applied) => {
+            updateQueueItem(id, {
+              ...applied,
+              aiData: { ...item.aiData, ...applied },
+            }, { userInitiated: true });
+            showToast('Changes saved to queued card', 'info');
+          },
+        });
+      });
+    }
+
+    const retryBtn = card.querySelector('.btn-retry-queue');
+    if (retryBtn && !retryBtn._bound) {
+      retryBtn._bound = true;
+      retryBtn.addEventListener('click', () => {
+        retryQueueItem(id);
+        showToast('Retrying analysis...', 'info');
+      });
+    }
+
+    const discardBtn = card.querySelector('.btn-discard-queue');
+    if (discardBtn && !discardBtn._bound) {
+      discardBtn._bound = true;
+      discardBtn.addEventListener('click', () => {
+        discardQueueItem(id);
+        showToast('Item discarded from queue', 'info');
+      });
+    }
+  }
+
+  function bindCardInputs(card, id) {
+    const nameInput = card.querySelector('.queue-item-name');
+    if (nameInput && !nameInput._bound) {
+      nameInput._bound = true;
+      nameInput.addEventListener('input', (e) => {
+        updateQueueItem(id, { name: e.target.value }, { silent: true, userInitiated: true });
+      });
+      nameInput.addEventListener('change', (e) => {
+        updateQueueItem(id, { name: e.target.value.trim() }, { silent: true, userInitiated: true });
+      });
+    }
+
+    const catSelect = card.querySelector('.queue-item-cat');
+    if (catSelect && !catSelect._bound) {
+      catSelect._bound = true;
+      catSelect.addEventListener('change', (e) => {
+        updateQueueItem(id, { category: e.target.value }, { silent: true, userInitiated: true });
+      });
+    }
+
+    const locInput = card.querySelector('.queue-item-location');
+    if (locInput && !locInput._bound) {
+      locInput._bound = true;
+      locInput.addEventListener('input', (e) => {
+        updateQueueItem(id, { location: e.target.value }, { silent: true, userInitiated: true });
+      });
+      locInput.addEventListener('change', (e) => {
+        updateQueueItem(id, { location: e.target.value.trim() }, { silent: true, userInitiated: true });
+      });
+    }
+
+    const condSelect = card.querySelector('.queue-item-condition');
+    if (condSelect && !condSelect._bound) {
+      condSelect._bound = true;
+      condSelect.addEventListener('change', (e) => {
+        updateQueueItem(id, { condition: e.target.value }, { silent: true, userInitiated: true });
+      });
+    }
+
+    const qtyInput = card.querySelector('.queue-item-qty');
+    if (qtyInput && !qtyInput._bound) {
+      qtyInput._bound = true;
+      qtyInput.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (Number.isFinite(val)) updateQueueItem(id, { quantity: val }, { silent: true, userInitiated: true });
+      });
+    }
+
+    const partInput = card.querySelector('.queue-item-partnum');
+    if (partInput && !partInput._bound) {
+      partInput._bound = true;
+      partInput.addEventListener('input', (e) => {
+        updateQueueItem(id, { partNumber: e.target.value }, { silent: true, userInitiated: true });
+      });
+      partInput.addEventListener('change', (e) => {
+        updateQueueItem(id, { partNumber: e.target.value.trim() }, { silent: true, userInitiated: true });
+      });
+    }
+  }
+
+  async function handleApproveAll() {
+    const summary = getQueueSummary();
+    if (summary.ready === 0) return;
+
+    // Sync any manually edited fields from DOM cards first without overwriting valid data with filenames
+    const queueList = getQueueItems();
+    container.querySelectorAll('.queue-card').forEach(card => {
+      const id = card.dataset.itemId;
+      const liveItem = queueList.find(i => i.id === id);
+      if (!id || !liveItem) return;
+
+      const nameInput = card.querySelector('.queue-item-name');
+      const locInput = card.querySelector('.queue-item-location');
+      const catSelect = card.querySelector('.queue-item-cat');
+      const condSelect = card.querySelector('.queue-item-condition');
+      const qtyInput = card.querySelector('.queue-item-qty');
+      const partInput = card.querySelector('.queue-item-partnum');
+
+      const updates = {};
+      const nameVal = nameInput?.value.trim();
+      if (nameVal && nameVal !== liveItem.fileName && (!liveItem.name || nameVal !== liveItem.name)) {
+        updates.name = nameVal;
+      }
+      const locVal = locInput?.value.trim();
+      if (locVal && locVal !== liveItem.location) {
+        updates.location = locVal;
+      }
+      const catVal = catSelect?.value;
+      if (catVal && catVal !== liveItem.category) {
+        updates.category = catVal;
+      }
+      const condVal = condSelect?.value;
+      if (condVal && condVal !== liveItem.condition) {
+        updates.condition = condVal;
+      }
+      const qtyVal = parseInt(qtyInput?.value, 10);
+      if (Number.isFinite(qtyVal) && qtyVal !== liveItem.quantity) {
+        updates.quantity = qtyVal;
+      }
+      const partVal = partInput?.value.trim();
+      if (partVal && partVal !== liveItem.partNumber) {
+        updates.partNumber = partVal;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updateQueueItem(id, updates, { userInitiated: true });
+      }
+    });
+
+    showToast(`Approving ${summary.ready} components into vault...`, 'info');
+    const approved = await approveAllReady();
+    showToast(`✨ ${approved.length} components added to inventory!`, 'success');
+    if (refreshView) refreshView();
+  }
+
+  function handleClearQueue() {
+    if (confirm('Are you sure you want to clear the entire AI intake queue?')) {
+      clearQueue();
+      showToast('Queue cleared', 'info');
+    }
+  }
+
+  function updateInPlace(updatedItems, summary) {
+    const percent = summary.total > 0 ? Math.round(((summary.ready + summary.error) / summary.total) * 100) : 0;
+
+    // 1. Update header actions & counts
+    const headerActions = document.getElementById('queue-header-actions');
+    if (headerActions) {
+      headerActions.innerHTML = `
+        ${summary.ready > 0 ? `
+          <button class="btn btn-primary btn-sm" id="btn-approve-all" style="background: linear-gradient(135deg, #10b981, #059669); border: none; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Approve All Ready (${summary.ready})
+          </button>
+        ` : ''}
+        ${summary.total > 0 ? `
+          <button class="btn btn-secondary btn-sm" id="btn-clear-queue" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Clear Queue
+          </button>
+        ` : ''}
+      `;
+      document.getElementById('btn-approve-all')?.addEventListener('click', handleApproveAll);
+      document.getElementById('btn-clear-queue')?.addEventListener('click', handleClearQueue);
+    }
+
+    // 2. Update progress bar & status text
+    const statusTextEl = document.getElementById('queue-status-text');
+    if (statusTextEl) {
+      statusTextEl.innerHTML = summary.isProcessing ? `
+        <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span>Processing queue: <strong>${summary.ready + summary.error} / ${summary.total}</strong> (${percent}%)</span>
+        <span style="font-size: 10px; background: rgba(99,102,241,0.12); color: var(--accent-primary); border: 1px solid rgba(99,102,241,0.25); border-radius: 4px; padding: 1px 6px; font-weight: 600;">⚡ 3 Parallel Workers</span>
+      ` : `
+        <span>Queue Status: <strong>${summary.total} component${summary.total !== 1 ? 's' : ''}</strong> staged</span>
+      `;
+    }
+
+    const countsEl = document.getElementById('queue-status-counts');
+    if (countsEl) {
+      countsEl.innerHTML = `
+        <span>✅ <strong>${summary.ready}</strong> Ready</span>
+        <span>⏳ <strong>${summary.queued}</strong> Queued</span>
+        ${summary.error > 0 ? `<span style="color: var(--accent-danger);">⚠️ <strong>${summary.error}</strong> Failed</span>` : ''}
+      `;
+    }
+
+    const progressFill = document.getElementById('queue-progress-bar-fill');
+    if (progressFill) {
+      progressFill.style.width = `${percent}%`;
+    }
+
+    // 3. Update individual cards in-place
+    const activeEl = document.activeElement;
+    for (const item of updatedItems) {
+      const card = container.querySelector(`.queue-card[data-item-id="${item.id}"]`);
+      if (!card) continue;
+
+      const isReady = item.status === 'ready';
+      const isProcessing = item.status === 'processing';
+      const isError = item.status === 'error';
+
+      // Card border
+      card.style.borderColor = isReady ? 'rgba(16,185,129,0.3)' : (isError ? 'rgba(239,68,68,0.3)' : 'var(--border-secondary)');
+
+      // Top status badge
+      const statusPill = card.querySelector('.queue-card-status-pill');
+      if (statusPill) {
+        statusPill.innerHTML = isReady ? `
+          <span style="font-size: 11px; font-weight: 600; color: #10b981; background: rgba(16,185,129,0.12); padding: 2px 8px; border-radius: 99px; display: inline-flex; align-items: center; gap: 4px;">
+            ✓ Ready for Vault
+          </span>
+          <span style="font-size: 10.5px; color: var(--text-tertiary);">
+            • ${escapeHtml(item.aiData?.modelUsed || 'AI Vision')}
+          </span>
+        ` : isProcessing ? `
+          <span style="font-size: 11px; font-weight: 600; color: var(--accent-primary); background: rgba(99,102,241,0.12); padding: 2px 8px; border-radius: 99px; display: inline-flex; align-items: center; gap: 4px;">
+            <svg class="spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            Analyzing with AI...
+          </span>
+        ` : isError ? `
+          <span style="font-size: 11px; font-weight: 600; color: var(--accent-danger); background: rgba(239,68,68,0.12); padding: 2px 8px; border-radius: 99px;">
+            ⚠️ Error: ${escapeHtml(item.error || 'Failed')}
+          </span>
+        ` : `
+          <span style="font-size: 11px; font-weight: 500; color: var(--text-secondary); background: var(--bg-tertiary); padding: 2px 8px; border-radius: 99px;">
+            ⏳ In Queue...
+          </span>
+        `;
+      }
+
+      // Card link badges (Robu / Hubtronics / Barcode)
+      const linksContainer = card.querySelector('.queue-card-links');
+      if (linksContainer) {
+        const isRobu = Boolean((item.aiData?.datasheetUrl && item.aiData.datasheetUrl.includes('robu.in')) ||
+                               (String(item.aiData?.supplierInfo || item.supplierInfo || '').toLowerCase().includes('robu') && (item.aiData?.partNumber || item.partNumber)));
+        const isHubtronics = Boolean((item.aiData?.datasheetUrl && item.aiData.datasheetUrl.includes('hubtronics.in')) ||
+                                     (String(item.aiData?.supplierInfo || item.supplierInfo || '').toLowerCase().includes('hubtronics')));
+
+        linksContainer.innerHTML = `
+          ${item.aiData?.partNumber ? `
+            <span style="font-size: 10px; color: #10b981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 1px 6px; border-radius: 4px;">
+              Barcode Detected
+            </span>
+          ` : ''}
+          ${isRobu ? `
+            <a href="${escapeAttr(getRobuLinkUrl(item))}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #0284c7; background: rgba(2,132,199,0.1); border: 1px solid rgba(2,132,199,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Robu.in">
+              🛒 Robu.in ↗
+            </a>
+          ` : ''}
+          ${isHubtronics ? `
+            <a href="${escapeAttr(item.aiData?.datasheetUrl || `https://hubtronics.in/index.php?route=product/search&search=${encodeURIComponent(item.name || item.partNumber)}`)}" target="_blank" rel="noopener" style="font-size: 10px; font-weight: 600; color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); padding: 1px 6px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="View product specs on Hubtronics">
+              🛒 Hubtronics ↗
+            </a>
+          ` : ''}
+        `;
+      }
+
+      // Update Subtitle/Status message under header
+      const subMsg = card.querySelector('.queue-card-submsg');
+      if (subMsg) {
+        if (isError) {
+          subMsg.innerHTML = `
+            <div style="font-size: var(--font-size-xs); color: var(--accent-danger); margin-bottom: 8px;">
+              ${escapeHtml(item.fileName)} • Error: ${escapeHtml(item.error)}
+            </div>
+          `;
+        } else if (isProcessing) {
+          subMsg.innerHTML = `
+            <div style="font-size: var(--font-size-xs); color: var(--accent-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+              <svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <span>${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Analyzing with AI in background...</span>
+            </div>
+          `;
+        } else if (!isReady) {
+          subMsg.innerHTML = `
+            <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 8px;">
+              ${escapeHtml(item.fileName)} (${Math.round(item.fileSize / 1024)} KB) • Waiting in queue...
+            </div>
+          `;
+        } else {
+          subMsg.innerHTML = '';
+        }
+      }
+
+      // Card input fields (only update if not currently active and not user-edited)
+      const nameInput = card.querySelector('.queue-item-name');
+      if (nameInput && nameInput !== activeEl && !item.userEdited?.name) {
+        nameInput.value = item.name || (isReady ? 'Electronic Component' : item.fileName);
+      }
+      const catSelect = card.querySelector('.queue-item-cat');
+      if (catSelect && catSelect !== activeEl && !item.userEdited?.category && (item.category || item.aiData?.category)) {
+        catSelect.value = item.category || item.aiData?.category;
+      }
+      const partInput = card.querySelector('.queue-item-partnum');
+      if (partInput && partInput !== activeEl && !item.userEdited?.partNumber && (item.partNumber || item.aiData?.partNumber)) {
+        partInput.value = item.partNumber || item.aiData?.partNumber;
+      }
+      const qtyInput = card.querySelector('.queue-item-qty');
+      if (qtyInput && qtyInput !== activeEl && !item.userEdited?.quantity && item.quantity !== undefined) {
+        qtyInput.value = item.quantity;
+      }
+      const condSelect = card.querySelector('.queue-item-condition');
+      if (condSelect && condSelect !== activeEl && !item.userEdited?.condition && (item.condition || item.aiData?.condition)) {
+        condSelect.value = item.condition || item.aiData?.condition;
+      }
+
+      // Card tags container
+      const tagsContainer = card.querySelector('.queue-card-tags');
+      if (tagsContainer) {
+        if (isReady && item.tags && item.tags.length > 0) {
+          tagsContainer.innerHTML = `
+            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
+              ${item.tags.slice(0, 5).map(t => `<span style="font-size: 10px; background: var(--bg-secondary); border: 1px solid var(--border-primary); color: var(--text-secondary); padding: 1px 6px; border-radius: 4px;">${escapeHtml(t)}</span>`).join('')}
+            </div>
+          `;
+        } else {
+          tagsContainer.innerHTML = '';
+        }
+      }
+
+      // Card action buttons
+      const actionsContainer = card.querySelector('.queue-card-actions');
+      if (actionsContainer) {
+        const hasApproveBtn = actionsContainer.querySelector('.btn-approve-queue');
+        if (isReady && !hasApproveBtn) {
+          actionsContainer.innerHTML = `
+            <button type="button" class="btn btn-secondary btn-sm btn-inspect-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Fine-tune Details
+            </button>
+            <button type="button" class="btn btn-primary btn-sm btn-approve-queue" data-id="${item.id}" style="padding: 4px 12px; font-size: 11.5px; background: linear-gradient(135deg, #10b981, #059669); border: none; display: inline-flex; align-items: center; gap: 4px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Approve & Add
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm btn-discard-queue" data-id="${item.id}" style="padding: 4px 8px; font-size: 11.5px; color: var(--accent-danger);" title="Discard item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          `;
+          bindCardActionButtons(card, item.id);
+        } else if (isError && !actionsContainer.querySelector('.btn-retry-queue')) {
+          actionsContainer.innerHTML = `
+            <button type="button" class="btn btn-secondary btn-sm btn-retry-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px;">
+              ↺ Retry Analysis
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm btn-discard-queue" data-id="${item.id}" style="padding: 4px 8px; font-size: 11.5px; color: var(--accent-danger);" title="Discard item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          `;
+          bindCardActionButtons(card, item.id);
+        }
+      }
+    }
   }
 
   function bindEvents() {
@@ -421,170 +855,23 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     });
 
     // Bulk approve all ready
-    document.getElementById('btn-approve-all')?.addEventListener('click', async () => {
-      const summary = getQueueSummary();
-      if (summary.ready === 0) return;
-
-      // Sync any edited fields from DOM cards first
-      container.querySelectorAll('.queue-card').forEach(card => {
-        const id = card.dataset.itemId;
-        const nameVal = card.querySelector('.queue-item-name')?.value.trim();
-        const locVal = card.querySelector('.queue-item-location')?.value.trim();
-        const catVal = card.querySelector('.queue-item-cat')?.value;
-        const condVal = card.querySelector('.queue-item-condition')?.value;
-        const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10);
-        const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
-
-        if (id) {
-          updateQueueItem(id, {
-            ...(nameVal ? { name: nameVal } : {}),
-            ...(locVal ? { location: locVal } : {}),
-            ...(catVal ? { category: catVal } : {}),
-            ...(condVal ? { condition: condVal } : {}),
-            ...(Number.isFinite(qtyVal) ? { quantity: qtyVal } : {}),
-            partNumber: partVal || '',
-          });
-        }
-      });
-
-      showToast(`Approving ${summary.ready} components into vault...`, 'info');
-      const approved = await approveAllReady();
-      showToast(`✨ ${approved.length} components added to inventory!`, 'success');
-      if (refreshView) refreshView();
-    });
+    document.getElementById('btn-approve-all')?.addEventListener('click', handleApproveAll);
 
     // Clear queue
-    document.getElementById('btn-clear-queue')?.addEventListener('click', () => {
-      if (confirm('Are you sure you want to clear the entire AI intake queue?')) {
-        clearQueue();
-        showToast('Queue cleared', 'info');
+    document.getElementById('btn-clear-queue')?.addEventListener('click', handleClearQueue);
+
+    // Bind inputs and action buttons for all rendered cards
+    container.querySelectorAll('.queue-card').forEach(card => {
+      const id = card.dataset.itemId;
+      if (id) {
+        bindCardInputs(card, id);
+        bindCardActionButtons(card, id);
       }
-    });
-
-    // Real-time synchronization of card inputs without interrupting typing
-    container.querySelectorAll('.queue-item-name').forEach(input => {
-      input.addEventListener('input', (e) => {
-        updateQueueItem(e.target.dataset.id, { name: e.target.value }, { silent: true });
-      });
-      input.addEventListener('change', (e) => {
-        updateQueueItem(e.target.dataset.id, { name: e.target.value.trim() }, { silent: true });
-      });
-    });
-
-    container.querySelectorAll('.queue-item-cat').forEach(select => {
-      select.addEventListener('change', (e) => {
-        updateQueueItem(e.target.dataset.id, { category: e.target.value }, { silent: true });
-      });
-    });
-
-    container.querySelectorAll('.queue-item-location').forEach(input => {
-      input.addEventListener('input', (e) => {
-        updateQueueItem(e.target.dataset.id, { location: e.target.value }, { silent: true });
-      });
-      input.addEventListener('change', (e) => {
-        updateQueueItem(e.target.dataset.id, { location: e.target.value.trim() }, { silent: true });
-      });
-    });
-
-    container.querySelectorAll('.queue-item-condition').forEach(select => {
-      select.addEventListener('change', (e) => {
-        updateQueueItem(e.target.dataset.id, { condition: e.target.value }, { silent: true });
-      });
-    });
-
-    container.querySelectorAll('.queue-item-qty').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const val = parseInt(e.target.value, 10);
-        if (Number.isFinite(val)) updateQueueItem(e.target.dataset.id, { quantity: val }, { silent: true });
-      });
-    });
-
-    container.querySelectorAll('.queue-item-partnum').forEach(input => {
-      input.addEventListener('input', (e) => {
-        updateQueueItem(e.target.dataset.id, { partNumber: e.target.value }, { silent: true });
-      });
-    });
-
-    // Delegate Card Actions
-    container.querySelectorAll('.btn-approve-queue').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.id;
-        const card = btn.closest('.queue-card');
-        const nameVal = card.querySelector('.queue-item-name')?.value.trim();
-        const locVal = card.querySelector('.queue-item-location')?.value.trim();
-        const catVal = card.querySelector('.queue-item-cat')?.value;
-        const condVal = card.querySelector('.queue-item-condition')?.value;
-        const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10) || 1;
-        const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
-
-        if (!nameVal) {
-          showToast('Component name is required', 'warning');
-          return;
-        }
-        if (!locVal) {
-          showToast('Storage location is required', 'warning');
-          card.querySelector('.queue-item-location')?.focus();
-          return;
-        }
-
-        try {
-          const saved = await approveQueueItem(id, {
-            name: nameVal,
-            location: locVal,
-            category: catVal,
-            condition: condVal,
-            quantity: qtyVal,
-            partNumber: partVal,
-          });
-          showToast(`✓ "${saved.name}" added to vault!`, 'success');
-          if (refreshView) refreshView();
-        } catch (err) {
-          showToast(err.message, 'error');
-        }
-      });
-    });
-
-    // Fine-tune with interactive modal
-    container.querySelectorAll('.btn-inspect-queue').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.id;
-        const item = getQueueItems().find(i => i.id === id);
-        if (!item || !item.aiData) return;
-
-        openAIReviewModal({
-          aiData: item.aiData,
-          imageSrc: cachedThumbnailURLs[id],
-          categories,
-          onApply: async (applied) => {
-            updateQueueItem(id, {
-              ...applied,
-              aiData: { ...item.aiData, ...applied },
-            });
-            showToast('Changes saved to queued card', 'info');
-          },
-        });
-      });
-    });
-
-    // Discard button
-    container.querySelectorAll('.btn-discard-queue').forEach(btn => {
-      btn.addEventListener('click', () => {
-        discardQueueItem(btn.dataset.id);
-        showToast('Item discarded from queue', 'info');
-      });
-    });
-
-    // Retry button
-    container.querySelectorAll('.btn-retry-queue').forEach(btn => {
-      btn.addEventListener('click', () => {
-        retryQueueItem(btn.dataset.id);
-        showToast('Retrying analysis...', 'info');
-      });
     });
   }
 
   // Subscribe to live queue updates
-  activeUnsubscribe = subscribeQueue(async (updatedItems) => {
+  activeUnsubscribe = subscribeQueue(async (updatedItems, summary) => {
     // If the queue view is unmounted or user navigated away, cancel subscription and do not touch DOM!
     if (!document.body.contains(container) || !container.querySelector('#queue-dropzone')) {
       if (activeUnsubscribe) {
@@ -594,14 +881,27 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
       return;
     }
 
-    // If user is currently typing/focused in an input element inside the queue, don't destroy DOM!
-    const activeEl = document.activeElement;
-    if (activeEl && container.contains(activeEl) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeEl.tagName)) {
-      return;
-    }
-
     await syncThumbnails(updatedItems);
-    render();
+
+    const existingCards = container.querySelectorAll('.queue-card');
+    const existingIds = Array.from(existingCards).map(c => c.dataset.itemId);
+    const updatedIds = updatedItems.map(i => i.id);
+
+    // Check if queue item structure (membership/order) changed
+    const structureChanged = existingIds.length !== updatedIds.length || !existingIds.every((id, idx) => id === updatedIds[idx]);
+
+    if (structureChanged) {
+      const activeEl = document.activeElement;
+      if (activeEl && container.contains(activeEl) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(activeEl.tagName)) {
+        // If user is actively typing, update cards in-place where possible to avoid destroying focus
+        updateInPlace(updatedItems, summary);
+        return;
+      }
+      render();
+    } else {
+      // Structure identical: update in-place smoothly without tearing down DOM or interrupting inputs
+      updateInPlace(updatedItems, summary);
+    }
   });
 
   // Initial sync & render

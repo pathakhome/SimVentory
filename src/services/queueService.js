@@ -14,6 +14,8 @@ let queue = [];
 let isProcessing = false;
 let isLoaded = false;
 let listeners = new Set();
+const activeProcessingIds = new Set();
+let activeWorkers = 0;
 
 /**
  * Ensure queue is loaded from localStorage.
@@ -21,17 +23,17 @@ let listeners = new Set();
  * Auto-recovers any zombie 'processing' items back to 'queued' if not actively processing.
  */
 function ensureLoaded(force = false) {
-  if (isLoaded && !force && isProcessing) {
+  if (isLoaded && !force && (isProcessing || activeWorkers > 0)) {
     return;
   }
   try {
     const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
 
-    if (!isProcessing) {
+    if (!isProcessing && activeWorkers === 0) {
       let changed = false;
       for (const item of parsed) {
-        if (item.status === 'processing') {
+        if (item.status === 'processing' && !activeProcessingIds.has(item.id)) {
           item.status = 'queued';
           changed = true;
         }
@@ -166,18 +168,17 @@ export const QUEUE_CONCURRENCY = 3;
  * Runs up to 3 parallel recognition workers concurrently.
  */
 export async function processQueue() {
-  if (isProcessing) return;
   ensureLoaded();
 
-  // Safety check: recover any zombie 'processing' items to 'queued' before starting
+  // Safety check: recover any zombie 'processing' items that aren't actively held by a worker
   for (const item of queue) {
-    if (item.status === 'processing') {
+    if (item.status === 'processing' && !activeProcessingIds.has(item.id)) {
       item.status = 'queued';
     }
   }
 
-  const hasQueued = queue.some(i => i.status === 'queued');
-  if (!hasQueued) {
+  const hasQueued = queue.some(i => i.status === 'queued' && !activeProcessingIds.has(i.id));
+  if (!hasQueued && activeWorkers === 0) {
     isProcessing = false;
     notifyListeners();
     return;
@@ -186,17 +187,28 @@ export async function processQueue() {
   isProcessing = true;
   notifyListeners();
 
+  let catNames = [];
   try {
     const categories = await getCategories();
-    const catNames = categories.map(c => c.name);
+    catNames = categories.map(c => c.name);
+  } catch (_) {}
 
-    async function worker() {
+  async function worker(workerId) {
+    activeWorkers++;
+    try {
       while (true) {
         // Atomically claim the next queued item synchronously before any await
-        const target = queue.find(i => i.status === 'queued');
-        if (!target) break;
+        const target = queue.find(i => i.status === 'queued' && !activeProcessingIds.has(i.id));
+        if (!target) {
+          // Brief grace pause in case items are currently being added in a batch
+          await new Promise(r => setTimeout(r, 400));
+          const recheck = queue.find(i => i.status === 'queued' && !activeProcessingIds.has(i.id));
+          if (!recheck) break;
+          continue;
+        }
 
         const itemId = target.id;
+        activeProcessingIds.add(itemId);
         target.status = 'processing';
         target.error = null;
         persistQueue();
@@ -230,11 +242,22 @@ export async function processQueue() {
 
           liveItem.status = 'ready';
           liveItem.aiData = aiResult;
-          liveItem.name = aiResult.name || 'Electronic Component';
-          liveItem.category = aiResult.category || 'Other';
-          liveItem.condition = aiResult.condition || liveItem.condition || 'Unpacked New';
-          liveItem.quantity = (aiResult.estimatedQuantity || aiResult.quantity) || liveItem.quantity || 1;
-          liveItem.partNumber = aiResult.partNumber || '';
+          // Protect any fields the user already manually edited from being overwritten
+          if (!liveItem.userEdited?.name) {
+            liveItem.name = aiResult.name || 'Electronic Component';
+          }
+          if (!liveItem.userEdited?.category) {
+            liveItem.category = aiResult.category || 'Other';
+          }
+          if (!liveItem.userEdited?.condition) {
+            liveItem.condition = aiResult.condition || liveItem.condition || 'Unpacked New';
+          }
+          if (!liveItem.userEdited?.quantity) {
+            liveItem.quantity = (aiResult.estimatedQuantity || aiResult.quantity) || liveItem.quantity || 1;
+          }
+          if (!liveItem.userEdited?.partNumber) {
+            liveItem.partNumber = aiResult.partNumber || '';
+          }
           liveItem.description = aiResult.description || '';
           liveItem.tags = Array.isArray(aiResult.tags) ? aiResult.tags : [];
           liveItem.notes = aiResult.notes || '';
@@ -242,29 +265,39 @@ export async function processQueue() {
           liveItem.datasheetUrl = aiResult.datasheetUrl || '';
           liveItem.error = null;
         } catch (err) {
-          console.error(`[QueueService] Error processing item ${itemId}:`, err);
+          console.error(`[QueueService] Error processing item ${itemId} (Worker ${workerId}):`, err);
           const liveItem = queue.find(i => i.id === itemId);
           if (liveItem) {
             liveItem.status = 'error';
             liveItem.error = err.message || 'AI recognition failed';
           }
+        } finally {
+          activeProcessingIds.delete(itemId);
         }
 
         persistQueue();
         // Brief pause between items per worker
         await new Promise(r => setTimeout(r, 400));
       }
+    } finally {
+      activeWorkers--;
+      if (activeWorkers === 0) {
+        isProcessing = false;
+        persistQueue();
+      }
     }
+  }
 
-    // Launch 3 workers concurrently
-    const workers = [];
-    for (let i = 0; i < QUEUE_CONCURRENCY; i++) {
-      workers.push(worker());
-    }
-    await Promise.all(workers);
-  } finally {
-    isProcessing = false;
-    persistQueue();
+  // Launch parallel workers up to QUEUE_CONCURRENCY, staggered by 600ms
+  const neededWorkers = Math.max(0, QUEUE_CONCURRENCY - activeWorkers);
+  for (let i = 0; i < neededWorkers; i++) {
+    const delay = i * 600;
+    setTimeout(() => {
+      const hasPending = queue.some(item => item.status === 'queued' && !activeProcessingIds.has(item.id));
+      if (hasPending || activeWorkers === 0) {
+        worker(i);
+      }
+    }, delay);
   }
 }
 
@@ -275,6 +308,7 @@ export async function retryQueueItem(id) {
   ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (item) {
+    activeProcessingIds.delete(id);
     item.status = 'queued';
     item.error = null;
     persistQueue();
@@ -286,13 +320,19 @@ export async function retryQueueItem(id) {
  * Update editable fields of a queued item.
  * @param {string} id
  * @param {Object} updates
- * @param {Object} options { silent: boolean }
+ * @param {Object} options { silent: boolean, userInitiated: boolean }
  */
-export function updateQueueItem(id, updates, { silent = false } = {}) {
+export function updateQueueItem(id, updates, { silent = false, userInitiated = false } = {}) {
   ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (item) {
     Object.assign(item, updates);
+    if (userInitiated) {
+      if (!item.userEdited) item.userEdited = {};
+      for (const key of Object.keys(updates)) {
+        item.userEdited[key] = true;
+      }
+    }
     if (silent) {
       try {
         localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));

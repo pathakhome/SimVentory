@@ -126,7 +126,7 @@ ROBU.IN "WH/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
   - SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in "<SKU>"' (e.g. 'site:robu.in "44258"') or 'robu.in SKU <SKU>' to retrieve:
     * The exact official component name (e.g. 'Infrared IR Receiver Module for Arduino').
     * Operating voltage, pinout functions (e.g. VCC, GND, OUT/DAT), carrier frequency, and physical dimensions.
-    * The exact product page URL on robu.in for "datasheetUrl".
+    * The exact product URL on robu.in for "datasheetUrl": 'https://robu.in/?s=<SKU>' (e.g. 'https://robu.in/?s=44258').
 - If the label also shows "QTY: <number>", populate "estimatedQuantity" with that number (default to 1 if not specified).
 
 HUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
@@ -500,7 +500,7 @@ If the label shows a barcode, a bold 4 to 7 digit number (e.g. 44258), and a lin
 2. SKU: Extract the bold number directly above WH/IN (e.g. "44258") as "partNumber".
 3. SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in <SKU>' to find the exact official component title, specs, pinouts, and dimensions.
 4. CONDITION: Set "condition": "Packed".
-5. DATASHEET: Set "datasheetUrl" to the live Robu product page.`;
+5. DATASHEET: Set "datasheetUrl" to "https://robu.in/?s=<SKU>".`;
   }
 
   if (!baseInstructions.toLowerCase().includes('rtb/in')) {
@@ -665,10 +665,11 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
   let supplierInfo = (parsed.supplierInfo || '').trim();
   let datasheetUrl = (parsed.datasheetUrl || '').trim();
 
-  // Detect Robu.in WH/IN warehouse inward barcode signature
-  const isRobuWhIn = /WH\s*[\/\\]\s*IN/i.test(rawResponseText) ||
+  // Detect Robu.in WH/IN warehouse inward barcode signature safely from parsed fields
+  const isRobuWhIn = /WH\s*[\/\\]\s*IN/i.test(partNumber) ||
                      /WH\s*[\/\\]\s*IN/i.test(parsed.notes || '') ||
-                     /WH\s*[\/\\]\s*IN/i.test(partNumber);
+                     /WH\s*[\/\\]\s*IN/i.test(parsed.description || '') ||
+                     (supplierInfo && supplierInfo.toLowerCase().includes('robu'));
 
   if (isRobuWhIn) {
     if (!supplierInfo) supplierInfo = 'Robu.in';
@@ -684,10 +685,11 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
     partNumber = skuMatch ? skuMatch[1] : '';
   }
 
-  // If partNumber was missed but WH/IN was detected, look for 4-7 digit SKU near WH/IN in raw response
+  // If partNumber was missed but WH/IN notes were explicitly detected, look for 4-7 digit SKU in notes or partNumber
   if (!partNumber && isRobuWhIn) {
-    const skuMatch = rawResponseText.match(/\b(\d{4,7})\b[\s\S]{0,40}WH\s*[\/\\]\s*IN/i) ||
-                     rawResponseText.match(/WH\s*[\/\\]\s*IN[\s\S]{0,40}\b(\d{4,7})\b/i);
+    const skuMatch = (parsed.notes || '').match(/WH\s*[\/\\]\s*IN[^\d]*(\d{4,7})\b/i) ||
+                     (parsed.notes || '').match(/\b(\d{4,7})\b[^\n]*WH\s*[\/\\]\s*IN/i) ||
+                     (parsed.description || '').match(/\b(\d{4,7})\b[^\n]*WH\s*[\/\\]\s*IN/i);
     if (skuMatch) {
       partNumber = skuMatch[1];
     }
@@ -703,15 +705,29 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
   if (!supplierInfo && (datasheetUrl.includes('robu.in') || extractedWebSources.some(u => u.includes('robu.in')))) {
     supplierInfo = 'Robu.in';
   }
-  if (supplierInfo.toLowerCase().includes('robu') && partNumber && !datasheetUrl) {
-    datasheetUrl = `https://robu.in/?s=${encodeURIComponent(partNumber)}&post_type=product`;
+
+  // For Robu products with a valid SKU, generate direct SKU search URL on Robu.in without post_type=product
+  if (supplierInfo.toLowerCase().includes('robu') && partNumber) {
+    const numericSku = partNumber.match(/\b(\d{4,8})\b/);
+    const cleanSku = numericSku ? numericSku[1] : partNumber.trim();
+    if (numericSku) {
+      partNumber = cleanSku;
+    }
+    // If datasheetUrl is empty, points to robu.in web page, or vertex redirect, replace with exact SKU lookup
+    if (!datasheetUrl || datasheetUrl.includes('robu.in') || datasheetUrl.includes('vertexaisearch') || datasheetUrl.includes('google.com')) {
+      datasheetUrl = `https://robu.in/?s=${encodeURIComponent(cleanSku)}`;
+    }
   }
 
-  // Detect Hubtronics.in RTB/IN warehouse inward barcode signature
-  const isHubtronics = /RTB\s*[\/\\]\s*IN/i.test(rawResponseText) ||
+  // Ensure post_type=product is stripped if present in any robu.in URL
+  if (datasheetUrl.includes('robu.in')) {
+    datasheetUrl = datasheetUrl.replace(/[?&]post_type=product/g, '').replace('?&', '?');
+  }
+
+  // Detect Hubtronics.in RTB/IN warehouse inward barcode signature safely from parsed fields
+  const isHubtronics = /RTB\s*[\/\\]\s*IN/i.test(partNumber) ||
                        /RTB\s*[\/\\]\s*IN/i.test(parsed.notes || '') ||
-                       /RTB\s*[\/\\]\s*IN/i.test(partNumber) ||
-                       /hubtronics/i.test(rawResponseText);
+                       (supplierInfo && supplierInfo.toLowerCase().includes('hubtronics'));
 
   if (isHubtronics) {
     if (!supplierInfo) supplierInfo = 'Hubtronics';
@@ -726,10 +742,9 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
     partNumber = numMatch ? numMatch[1] : '';
   }
 
-  // If partNumber was missed but Hubtronics detected, look for 6-12 digit barcode or IC code
+  // If partNumber was missed but Hubtronics detected in notes, extract numeric code
   if (!partNumber && isHubtronics) {
-    const codeMatch = rawResponseText.match(/\b(\d{8,12})\b/) ||
-                     rawResponseText.match(/RTB\s*[\/\\]\s*IN[^\n]*\n\s*(\d+)/i);
+    const codeMatch = (parsed.notes || '').match(/RTB\s*[\/\\]\s*IN[^\n]*\n?\s*(\d{6,12})/i);
     if (codeMatch) {
       partNumber = codeMatch[1];
     }

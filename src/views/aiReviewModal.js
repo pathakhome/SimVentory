@@ -223,7 +223,7 @@ export function openAIReviewModal({
                 Manufacturer / Supplier
               </label>
               ${aiData.supplierInfo?.toLowerCase().includes('robu') && aiData.partNumber ? `
-                <a href="https://robu.in/?s=${encodeURIComponent(aiData.partNumber)}&post_type=product" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #0284c7; text-decoration: none; font-weight: 600;">
+                <a href="https://robu.in/?s=${encodeURIComponent(aiData.partNumber)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #0284c7; text-decoration: none; font-weight: 600;">
                   🛒 Robu SKU ↗
                 </a>
               ` : ''}
@@ -244,7 +244,7 @@ export function openAIReviewModal({
                 ${(aiData.datasheetUrl?.includes('robu.in') || aiData.datasheetUrl?.includes('hubtronics.in')) ? 'Product Page / Datasheet' : 'Datasheet URL'}
               </label>
               ${aiData.datasheetUrl ? `
-                <a href="${escapeAttr(aiData.datasheetUrl)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: ${aiData.datasheetUrl.includes('robu.in') ? '#0284c7' : aiData.datasheetUrl.includes('hubtronics.in') ? '#f59e0b' : 'var(--accent-primary-hover)'}; text-decoration: ${(aiData.datasheetUrl.includes('robu.in') || aiData.datasheetUrl.includes('hubtronics.in')) ? 'none' : 'underline'}; font-weight: 600;">
+                <a href="${escapeAttr(aiData.datasheetUrl.includes('robu.in') ? aiData.datasheetUrl.replace(/[?&]post_type=product/g, '').replace('?&', '?') : aiData.datasheetUrl)}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: ${aiData.datasheetUrl.includes('robu.in') ? '#0284c7' : aiData.datasheetUrl.includes('hubtronics.in') ? '#f59e0b' : 'var(--accent-primary-hover)'}; text-decoration: ${(aiData.datasheetUrl.includes('robu.in') || aiData.datasheetUrl.includes('hubtronics.in')) ? 'none' : 'underline'}; font-weight: 600;">
                   ${aiData.datasheetUrl.includes('robu.in') ? '🛒 View on Robu.in ↗' : aiData.datasheetUrl.includes('hubtronics.in') ? '🛒 View on Hubtronics ↗' : 'Test Link ↗'}
                 </a>
               ` : ''}
