@@ -208,6 +208,7 @@ export function openAIReviewModal({
                 <input type="checkbox" class="ai-field-check" data-field="tags" ${aiData.tags && aiData.tags.length > 0 ? 'checked' : ''} style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
                 Suggested Tags (Comma separated)
               </label>
+              <span style="font-size: 10.5px; color: var(--text-tertiary);">(Replaces previous tags)</span>
             </div>
             <input type="text" id="ai-val-tags" value="${escapeAttr(tagsString)}" class="form-input" style="width: 100%; font-size: var(--font-size-sm);" placeholder="timer, analog, DIP-8, 5V-15V" />
             <div id="ai-tags-preview-pills" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px;">

@@ -40,12 +40,21 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
     </div>
     <div class="modal-body">
       ${imageSrc ? `
-        <div style="position: relative; margin-bottom: 14px;">
-          <img class="modal-image" src="${imageSrc}" alt="${escapeHtml(item.name)}" style="margin-bottom: 0;" />
-          <button type="button" class="btn btn-primary btn-sm" id="modal-ai-analyze-btn" style="position: absolute; bottom: 10px; right: 10px; display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; box-shadow: 0 4px 14px rgba(0,0,0,0.5); font-size: var(--font-size-xs); font-weight: 600;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            Generate Details with AI
-          </button>
+        <div style="margin-bottom: 14px; border-radius: var(--border-radius-md); overflow: hidden; border: 1px solid var(--border-secondary); background: var(--bg-card); box-shadow: var(--shadow-sm);">
+          <div style="position: relative;">
+            <img class="modal-image" src="${imageSrc}" alt="${escapeHtml(item.name)}" style="margin-bottom: 0; width: 100%; display: block; max-height: 260px; object-fit: contain; background: #000;" />
+          </div>
+          <!-- AI Analysis Card Bar with Hint Box -->
+          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08)); border-top: 1px solid var(--border-primary); flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 190px; background: var(--bg-primary); padding: 6px 10px; border-radius: var(--border-radius-sm); border: 1px solid var(--border-secondary);">
+              <span style="font-size: 11.5px; color: var(--accent-primary); font-weight: 600; white-space: nowrap;">💡 AI Hint:</span>
+              <input type="text" id="modal-ai-hint-input" placeholder="Optional clue (e.g. SMD 0805, 3.3V LDO, ESP32)..." style="width: 100%; border: none; background: transparent; font-size: 11.5px; color: var(--text-primary); outline: none; padding: 1px 0;" title="Optional clue passed to AI to improve identification" />
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="modal-ai-analyze-btn" style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; font-size: var(--font-size-xs); font-weight: 600; padding: 7px 14px; white-space: nowrap; box-shadow: 0 2px 8px rgba(99,102,241,0.35);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              AI Re-analyze
+            </button>
+          </div>
         </div>
       ` : ''}
 
@@ -203,11 +212,13 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
     showToast(`Analyzing ${item.name || 'component'} with AI...`, 'info');
 
     try {
+      const hintVal = document.getElementById('modal-ai-hint-input')?.value.trim() || '';
       const categories = await getCategories();
       const detected = await analyzeComponentImage({
         image: imageBlob || imageSrc,
         categories: categories.map(c => c.name),
         existingItem: item,
+        hint: hintVal,
       });
 
       openAIReviewModal({
@@ -227,8 +238,8 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
           }
 
           if (Array.isArray(applied.tags)) {
-            const mergedTags = Array.from(new Set([...(item.tags || []), ...applied.tags]));
-            updatedItem.tags = mergedTags;
+            // Replace previous tags with newly generated AI tags
+            updatedItem.tags = applied.tags;
           }
 
           await saveItem(updatedItem);

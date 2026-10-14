@@ -302,15 +302,18 @@ export async function processQueue() {
 }
 
 /**
- * Retry a failed queue item.
+ * Retry or re-analyze a queue item with optional updated hint.
  */
-export async function retryQueueItem(id) {
+export async function retryQueueItem(id, newHint = null) {
   ensureLoaded();
   const item = queue.find(i => i.id === id);
   if (item) {
     activeProcessingIds.delete(id);
     item.status = 'queued';
     item.error = null;
+    if (newHint !== null) {
+      item.hint = newHint;
+    }
     persistQueue();
     processQueue();
   }

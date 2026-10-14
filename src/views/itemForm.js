@@ -555,9 +555,13 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             }
           }
           if (Array.isArray(applied.tags)) {
+            // Replace previous tags with newly generated AI tags
+            tags = [];
+            tagContainer.querySelectorAll('.tag-chip').forEach(c => c.remove());
             for (const t of applied.tags) {
               addTag(t);
             }
+            renderExistingTagsCloud();
           }
           showToast('✨ AI details applied to form!', 'success');
         },

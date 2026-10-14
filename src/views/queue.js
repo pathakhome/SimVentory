@@ -344,6 +344,12 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             </div>
           </div>
 
+          <!-- Card AI Hint Box -->
+          <div style="display: flex; align-items: center; gap: 6px; background: var(--bg-primary); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-secondary); margin-bottom: 8px;">
+            <span style="font-size: 10.5px; color: var(--accent-primary); font-weight: 600; white-space: nowrap;">💡 AI Hint:</span>
+            <input type="text" class="queue-item-hint" data-id="${item.id}" value="${escapeAttr(item.hint || '')}" placeholder="Optional clue (e.g. SMD 0805, 3.3V LDO)..." style="width: 100%; border: none; background: transparent; font-size: 11px; color: var(--text-primary); outline: none; padding: 1px 0;" title="Optional hint provided to AI vision for this component" />
+          </div>
+
           <div class="queue-card-tags">
             ${isReady && item.tags && item.tags.length > 0 ? `
               <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
@@ -355,6 +361,10 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
           <!-- Bottom Card Action Controls -->
           <div class="queue-card-actions" style="display: flex; gap: 8px; align-items: center; justify-content: flex-end; border-top: 1px solid var(--border-primary); padding-top: 10px;">
             ${isReady ? `
+              <button type="button" class="btn btn-secondary btn-sm btn-reanalyze-queue" data-id="${item.id}" style="padding: 4px 9px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;" title="Re-run AI analysis with card hint">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                AI Re-analyze
+              </button>
               <button type="button" class="btn btn-secondary btn-sm btn-inspect-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 Fine-tune Details
@@ -438,11 +448,22 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
       });
     }
 
+    const reanalyzeBtn = card.querySelector('.btn-reanalyze-queue');
+    if (reanalyzeBtn && !reanalyzeBtn._bound) {
+      reanalyzeBtn._bound = true;
+      reanalyzeBtn.addEventListener('click', () => {
+        const hintVal = card.querySelector('.queue-item-hint')?.value.trim() || '';
+        retryQueueItem(id, hintVal);
+        showToast('Re-analyzing with AI...', 'info');
+      });
+    }
+
     const retryBtn = card.querySelector('.btn-retry-queue');
     if (retryBtn && !retryBtn._bound) {
       retryBtn._bound = true;
       retryBtn.addEventListener('click', () => {
-        retryQueueItem(id);
+        const hintVal = card.querySelector('.queue-item-hint')?.value.trim() || '';
+        retryQueueItem(id, hintVal);
         showToast('Retrying analysis...', 'info');
       });
     }
@@ -458,6 +479,13 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
   }
 
   function bindCardInputs(card, id) {
+    const hintInput = card.querySelector('.queue-item-hint');
+    if (hintInput && !hintInput._bound) {
+      hintInput._bound = true;
+      hintInput.addEventListener('input', (e) => {
+        updateQueueItem(id, { hint: e.target.value }, { silent: true, userInitiated: true });
+      });
+    }
     const nameInput = card.querySelector('.queue-item-name');
     if (nameInput && !nameInput._bound) {
       nameInput._bound = true;
