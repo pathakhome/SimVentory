@@ -235,12 +235,12 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <div class="form-group full-width">
             <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
               <span>Tags</span>
-              <span style="font-weight:400; font-size:var(--font-size-xs); color:var(--text-tertiary);">Type & tap + Add, or select suggestions</span>
+              <span style="font-weight:400; font-size:var(--font-size-xs); color:var(--text-tertiary);">Click text field to view vault tags, or type & tap + Add</span>
             </label>
             <div style="display:flex; gap:8px; align-items:stretch;">
               <div class="tag-input-container" id="tag-container" style="flex:1;">
                 ${(item.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeAttr(t)}">${escapeHtml(t)}<button type="button">&times;</button></span>`).join('')}
-                <input type="text" class="tag-input" id="tag-input" list="existing-tags-datalist" placeholder="Add tag (e.g. smd, 3.3v, i2c)..." autocomplete="off" enterkeyhint="done" />
+                <input type="text" class="tag-input" id="tag-input" list="existing-tags-datalist" placeholder="Click to view available tags or type..." autocomplete="off" enterkeyhint="done" />
                 <datalist id="existing-tags-datalist">
                   ${allUniqueTags.map(t => `<option value="${escapeAttr(t)}"></option>`).join('')}
                 </datalist>
@@ -250,11 +250,14 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                 Add
               </button>
             </div>
-            <div class="existing-tags-wrapper" id="existing-tags-wrapper" style="margin-top: 8px;">
-              <div style="font-size: var(--font-size-xs); color: var(--text-tertiary); margin-bottom: 6px;">
-                Existing tags in your vault (tap to add):
+            <div class="existing-tags-wrapper" id="existing-tags-wrapper" style="display: none; margin-top: 8px; background: var(--bg-card); border: 1px solid var(--border-secondary); border-radius: var(--border-radius-md); padding: 12px; box-shadow: var(--shadow-md);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: var(--font-size-xs); font-weight: 600; color: var(--text-secondary);">
+                  🏷️ Available tags in vault (tap to add):
+                </span>
+                <span style="font-size: 11px; color: var(--text-tertiary);" id="existing-tags-count"></span>
               </div>
-              <div class="existing-tags-cloud" id="existing-tags-cloud" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+              <div class="existing-tags-cloud" id="existing-tags-cloud" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow-y: auto;"></div>
             </div>
           </div>
 
@@ -625,14 +628,40 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   const existingTagsCloud = document.getElementById('existing-tags-cloud');
   const existingTagsWrapper = document.getElementById('existing-tags-wrapper');
   let tags = [...(item.tags || [])];
+  let isTagsDropdownOpen = false;
 
   function renderExistingTagsCloud() {
     if (!existingTagsCloud || !existingTagsWrapper) return;
-    const available = allUniqueTags.filter(t => !tags.includes(t));
-    if (available.length === 0) {
+    if (!isTagsDropdownOpen) {
       existingTagsWrapper.style.display = 'none';
       return;
     }
+
+    const query = (tagInput ? tagInput.value.trim().toLowerCase() : '');
+    let available = allUniqueTags.filter(t => !tags.includes(t));
+    if (query) {
+      available = available.filter(t => t.toLowerCase().includes(query));
+    }
+
+    const countEl = document.getElementById('existing-tags-count');
+    if (countEl) {
+      countEl.textContent = `${available.length} tag${available.length !== 1 ? 's' : ''}`;
+    }
+
+    if (available.length === 0) {
+      if (allUniqueTags.filter(t => !tags.includes(t)).length === 0) {
+        existingTagsWrapper.style.display = 'none';
+      } else {
+        existingTagsWrapper.style.display = 'block';
+        existingTagsCloud.innerHTML = `
+          <div style="font-size: 11.5px; color: var(--text-tertiary); padding: 4px 0;">
+            No matching tags found for "${escapeHtml(tagInput.value.trim())}". Press Enter or tap <strong>+ Add</strong> to create it.
+          </div>
+        `;
+      }
+      return;
+    }
+
     existingTagsWrapper.style.display = 'block';
     existingTagsCloud.innerHTML = available.map(t => `
       <button type="button" class="btn-existing-tag-chip" data-tag="${escapeAttr(t)}" style="background: var(--bg-card); border: 1px solid var(--border-secondary); color: var(--text-secondary); border-radius: var(--border-radius-full); padding: 3px 10px; font-size: var(--font-size-xs); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all var(--transition-fast);">
@@ -641,13 +670,31 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     `).join('');
   }
 
+  // Initial state: do not show tags cloud until user interacts
   renderExistingTagsCloud();
 
+  // Show available tags when clicking or focusing the tag text field
+  if (tagInput) {
+    tagInput.addEventListener('focus', () => {
+      isTagsDropdownOpen = true;
+      renderExistingTagsCloud();
+    });
+
+    tagInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+      isTagsDropdownOpen = true;
+      renderExistingTagsCloud();
+    });
+  }
+
+  // Clicking an existing tag adds it and keeps input focused
   if (existingTagsCloud) {
     existingTagsCloud.addEventListener('click', (e) => {
       const btn = e.target.closest('.btn-existing-tag-chip');
       if (btn && btn.dataset.tag) {
         addTag(btn.dataset.tag);
+        if (tagInput) tagInput.value = '';
+        isTagsDropdownOpen = true;
         renderExistingTagsCloud();
         tagInput.focus();
       }
@@ -661,7 +708,21 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       e.target.parentElement.remove();
       renderExistingTagsCloud();
     } else {
+      isTagsDropdownOpen = true;
       tagInput.focus();
+      renderExistingTagsCloud();
+    }
+  });
+
+  // Close tags dropdown when clicking outside
+  document.addEventListener('pointerdown', (e) => {
+    if (!isTagsDropdownOpen) return;
+    const isInsideTagArea = (tagContainer && tagContainer.contains(e.target)) ||
+      (existingTagsWrapper && existingTagsWrapper.contains(e.target)) ||
+      (btnAddTagManual && btnAddTagManual.contains(e.target));
+    if (!isInsideTagArea) {
+      isTagsDropdownOpen = false;
+      renderExistingTagsCloud();
     }
   });
 
@@ -688,6 +749,11 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   }
 
   tagInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      isTagsDropdownOpen = false;
+      renderExistingTagsCloud();
+      return;
+    }
     if (e.key === 'Enter' || e.keyCode === 13 || e.key === ',') {
       e.preventDefault();
       commitInputTag();
@@ -700,10 +766,13 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     }
   });
 
-  // Handle typing comma on mobile keyboards
+  // Handle typing to filter tags or comma to commit
   tagInput.addEventListener('input', () => {
     if (tagInput.value.includes(',')) {
       commitInputTag();
+    } else {
+      isTagsDropdownOpen = true;
+      renderExistingTagsCloud();
     }
   });
 
