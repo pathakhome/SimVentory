@@ -114,22 +114,20 @@ DIMENSIONS IN DESCRIPTION:
 - If dimensions cannot be determined from the image or package type, you MUST STILL include the placeholder line: "Dimensions: [Pending measurement - L x W x H mm]" so the user can fill it in later.
 - The "description" field MUST ALWAYS conclude with this "Dimensions:" paragraph.
 
-ROBU.IN "WH/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
+ROBU.IN "WH/IN" BARCODE LABEL SIGNATURE:
 - Robu.in uses a standard white barcode label on its sealed bags:
   1. Top: 1D linear barcode.
   2. Center: Prominent bold 4 to 7 digit numeric SKU code (e.g., printed numbers like 29793, 31100, 58718).
   3. Bottom: Warehouse inward tracking line containing "WH/IN/..." or "WH/OUT/...".
 - When you see a label with "WH/IN" or "WH/IN/...":
   - SUPPLIER: Set "supplierInfo": "Robu.in".
-  - SKU / PART NUMBER: Extract ONLY the actual bold numeric SKU printed on the label in the image into "partNumber". NEVER use an example number; read the actual digits present on the user's label. Do NOT put 'WH/IN/...' in "partNumber".
+  - SKU / PART NUMBER: Extract ONLY the actual bold numeric SKU printed on the label in the image into "partNumber". Read the actual digits present on the user's label. Do NOT put 'WH/IN/...' in "partNumber".
+  - COMPONENT IDENTIFICATION: Identify the component (name, category, description, specifications, pinouts) using pure visual AI inspection of the actual physical electronic part, IC markings, and PCB silkscreen visible in the photo. Do NOT perform web searches for Robu numeric SKUs.
   - CONDITION: Set "condition": "Packed" (since it is sealed in the manufacturer/distributor bag).
-  - SEARCH GROUNDING: If Google Search Grounding is available, search 'site:robu.in "<SKU>"' using the exact detected SKU digits to retrieve:
-    * The official component catalog title.
-    * Operating voltage, pinout functions, and physical dimensions.
-    * The exact product URL on robu.in for "datasheetUrl": 'https://robu.in/?s=<SKU>'.
+  - DATASHEET: Set "datasheetUrl" to "https://robu.in/?s=<SKU>".
 - If the label also shows "QTY: <number>", populate "estimatedQuantity" with that number (default to 1 if not specified).
 
-HUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
+HUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE:
 - Hubtronics uses a white barcode label on its sealed component bags:
   1. Top: Warehouse inward tracking line containing "RTB/IN-" or "RTB/IN" (e.g. 'RTB/IN-27134').
   2. Second line: Numeric item code / barcode (e.g., '1927766437').
@@ -141,11 +139,10 @@ HUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
   - SKU / PART NUMBER: Extract the numeric item code directly below RTB/IN (e.g., '1927766437') or the component IC part number (e.g., 'MAX98357') into "partNumber". Do NOT put 'RTB/IN-27134' in "partNumber".
   - NAME: Use the printed product title from the label (e.g. 'MAX98357 I2S 3W Class D Audio Decoder Module').
   - CONDITION: Set "condition": "Packed" (since it is sealed in the distributor pouch).
-  - SEARCH GROUNDING: Use Google Search Grounding to search 'site:hubtronics.in "<Title or SKU>"' or 'hubtronics <Title>' to retrieve full operating voltages, amplifier/chip specifications, pinouts, and dimensions.
   - DATASHEET / URL: Provide the official Hubtronics product page URL if discovered, or 'https://hubtronics.in/index.php?route=product/search&search=<Title>'.
 
 CRITICAL FORMAT REQUIREMENT:
-Even though you are using Google Search Grounding to fetch product details, your final response MUST BE STRICTLY AND ONLY A SINGLE RAW JSON OBJECT (enclosed in { ... }) matching the schema below. Do not return conversational text or markdown explanation outside JSON.
+Your final response MUST BE STRICTLY AND ONLY A SINGLE RAW JSON OBJECT (enclosed in { ... }) matching the schema below. Do not return conversational text or markdown explanation outside JSON.
 Required JSON schema:
 {
   "name": "Concise, descriptive component name (e.g., 'NE555 Precision Timer IC' or 'ESP32-WROOM-32D Development Board')",
@@ -498,7 +495,7 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
 If the label shows a barcode, a bold 4 to 7 digit numeric SKU, and a line with "WH/IN/...":
 1. SUPPLIER: Set "supplierInfo": "Robu.in".
 2. SKU: Extract ONLY the actual bold digits printed directly above WH/IN as "partNumber". Read strictly from the image.
-3. SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in <SKU>' to find the exact official component title, specs, pinouts, and dimensions.
+3. COMPONENT IDENTIFICATION: Identify the component name, specs, and pinouts visually from the physical part/IC visible in the photo. Do NOT perform web searches for Robu numeric SKUs.
 4. CONDITION: Set "condition": "Packed".
 5. DATASHEET: Set "datasheetUrl" to "https://robu.in/?s=<SKU>".`;
   }
@@ -509,9 +506,8 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
 1. SUPPLIER: Set "supplierInfo": "Hubtronics".
 2. SKU: Extract the numeric item code directly below RTB/IN (e.g. "1927766437") or component IC part number as "partNumber".
 3. NAME: Use the printed product title from the label if visible.
-4. SEARCH GROUNDING: Use Google Search Grounding to search 'site:hubtronics.in <Title or SKU>' or 'hubtronics <Title>' to retrieve full operating voltages, amplifier/chip specifications, pinouts, and dimensions.
-5. CONDITION: Set "condition": "Packed".
-6. DATASHEET: Set "datasheetUrl" to the Hubtronics product page.`;
+4. CONDITION: Set "condition": "Packed".
+5. DATASHEET: Set "datasheetUrl" to the Hubtronics product page.`;
   }
 
   const systemInstructions = baseInstructions + hintSnippet;
@@ -696,16 +692,6 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
   }
 
   // If datasheetUrl is empty, use web sources from Google Search Grounding
-  if (!datasheetUrl && extractedWebSources.length > 0) {
-    const distributorSource = extractedWebSources.find(u => u.includes('robu.in') || u.includes('hubtronics.in'));
-    datasheetUrl = distributorSource || extractedWebSources[0];
-  }
-
-  // If Robu packaging was detected or web search hit robu.in, auto-link to Robu product page
-  if (!supplierInfo && (datasheetUrl.includes('robu.in') || extractedWebSources.some(u => u.includes('robu.in')))) {
-    supplierInfo = 'Robu.in';
-  }
-
   // For Robu products with a valid SKU, generate direct SKU search URL on Robu.in without post_type=product
   if (supplierInfo.toLowerCase().includes('robu') && partNumber) {
     const numericSku = partNumber.match(/\b(\d{4,8})\b/);
@@ -713,10 +699,11 @@ If the label shows "RTB/IN-" or "RTB/IN" (e.g. RTB/IN-27134), a numeric code (e.
     if (numericSku) {
       partNumber = cleanSku;
     }
-    // If datasheetUrl is empty, points to robu.in web page, or vertex redirect, replace with exact SKU lookup
-    if (!datasheetUrl || datasheetUrl.includes('robu.in') || datasheetUrl.includes('vertexaisearch') || datasheetUrl.includes('google.com')) {
-      datasheetUrl = `https://robu.in/?s=${encodeURIComponent(cleanSku)}`;
-    }
+    // Always set direct store search link on Robu for the detected SKU
+    datasheetUrl = `https://robu.in/?s=${encodeURIComponent(cleanSku)}`;
+  } else if (!datasheetUrl && extractedWebSources.length > 0) {
+    // If other component datasheet found from manufacturer web sources
+    datasheetUrl = extractedWebSources[0];
   }
 
   // Ensure post_type=product is stripped if present in any robu.in URL

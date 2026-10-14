@@ -294,7 +294,7 @@ export async function renderSettings(container, { refreshView }) {
             <div style="display:flex; align-items:flex-start; gap:8px; margin-top:4px;">
               <input type="checkbox" id="ai-web-search-check" ${aiSettings.webSearchGrounding !== false ? 'checked' : ''} style="margin-top:3px; accent-color:var(--accent-primary);" />
               <label for="ai-web-search-check" style="font-size:var(--font-size-xs); color:var(--text-secondary); cursor:pointer;">
-                <strong>🌐 Enable Live Google Search Grounding</strong> (Allows Gemini to search live product pages on Robu.in or distributors to fetch pinouts, exact specs, and physical dimensions using detected packaging SKUs and barcodes).
+                <strong>🌐 Enable Live Google Search Grounding</strong> (Allows Gemini to search general technical datasheets and pinouts for known IC part numbers. Robu barcodes are identified via pure visual OCR).
               </label>
             </div>
 
