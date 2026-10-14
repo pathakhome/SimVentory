@@ -27,13 +27,24 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   STATIC_JSON_SCHEMA,
 } from '../services/aiService.js';
+import {
+  getBackupSettings,
+  saveBackupSettings,
+  getBackupsList,
+  triggerBackupNow,
+  downloadBackup,
+  restoreBackup,
+  deleteBackup,
+} from '../services/backupService.js';
 
 export async function renderSettings(container, { refreshView }) {
-  const [items, categories, locations, aiSettings] = await Promise.all([
+  const [items, categories, locations, aiSettings, backupSettings, backupsList] = await Promise.all([
     getAllItems(),
     getCategories(),
     getLocations(),
     fetchAISettings(),
+    getBackupSettings(),
+    getBackupsList(),
   ]);
   const currentPreset = PROVIDER_PRESETS[aiSettings.provider] || PROVIDER_PRESETS.custom;
 
@@ -433,16 +444,175 @@ export async function renderSettings(container, { refreshView }) {
         </div>
       </div>
 
+      <!-- Automated Periodic Backup & Recovery -->
+      <div class="settings-section" id="backup-settings-section">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          <div>
+            <h3>⏰ Automated Periodic Backup & Recovery</h3>
+            <p style="color:var(--text-secondary); font-size:var(--font-size-sm); margin-top:2px;">
+              Automatically safeguard your component catalog, photos, categories, and locations at scheduled intervals.
+            </p>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-backup-now" style="display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg, #10b981, #059669); border:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Create Backup Snapshot Now
+          </button>
+        </div>
+
+        <!-- Schedule Configuration Box -->
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border-primary);">
+            <div>
+              <div style="font-weight:600; font-size:var(--font-size-sm); color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                <span>Periodic Auto-Backup</span>
+                <span id="backup-status-badge" style="font-size:11px; padding:2px 8px; border-radius:99px; ${backupSettings.enabled ? 'background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);' : 'background:var(--bg-tertiary); color:var(--text-tertiary); border:1px solid var(--border-primary);'}">
+                  ${backupSettings.enabled ? '● Active' : '○ Disabled'}
+                </span>
+              </div>
+              <div style="font-size:var(--font-size-xs); color:var(--text-tertiary); margin-top:2px;">
+                ${backupSettings.lastBackupAt ? `Last automated backup: <strong>${new Date(backupSettings.lastBackupAt).toLocaleString()}</strong>` : 'No backup snapshots created yet.'}
+              </div>
+            </div>
+
+            <label class="toggle-switch" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="backup-enabled-toggle" ${backupSettings.enabled ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;" />
+              <span style="font-size:var(--font-size-sm); font-weight:600; color:var(--text-primary);">Enable Schedule</span>
+            </label>
+          </div>
+
+          <!-- Schedule Parameters Grid -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">
+            <div>
+              <label for="backup-interval-select" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
+                Backup Frequency:
+              </label>
+              <select id="backup-interval-select" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);">
+                <option value="1" ${backupSettings.intervalDays === 1 ? 'selected' : ''}>Every 24 Hours (Daily)</option>
+                <option value="3" ${backupSettings.intervalDays === 3 ? 'selected' : ''}>Every 3 Days</option>
+                <option value="7" ${backupSettings.intervalDays === 7 ? 'selected' : ''}>Every 7 Days (Weekly)</option>
+                <option value="14" ${backupSettings.intervalDays === 14 ? 'selected' : ''}>Every 14 Days (Bi-weekly)</option>
+                <option value="30" ${backupSettings.intervalDays === 30 ? 'selected' : ''}>Every 30 Days (Monthly)</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="backup-retention-select" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
+                Retention (Rotation):
+              </label>
+              <select id="backup-retention-select" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);">
+                <option value="3" ${backupSettings.maxBackups === 3 ? 'selected' : ''}>Keep last 3 snapshots</option>
+                <option value="5" ${backupSettings.maxBackups === 5 ? 'selected' : ''}>Keep last 5 snapshots</option>
+                <option value="7" ${backupSettings.maxBackups === 7 ? 'selected' : ''}>Keep last 7 snapshots (Recommended)</option>
+                <option value="14" ${backupSettings.maxBackups === 14 ? 'selected' : ''}>Keep last 14 snapshots</option>
+                <option value="30" ${backupSettings.maxBackups === 30 ? 'selected' : ''}>Keep last 30 snapshots</option>
+              </select>
+            </div>
+
+            <div style="display:flex; flex-direction:column; justify-content:center;">
+              <label style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
+                Download Preference:
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; font-size:var(--font-size-xs); color:var(--text-primary); cursor:pointer;">
+                <input type="checkbox" id="backup-autodownload-toggle" ${backupSettings.autoDownload ? 'checked' : ''} style="cursor:pointer;" />
+                <span>Also trigger file download to PC</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Snapshots Vault Table / List -->
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h4 style="font-size:var(--font-size-sm); font-weight:600; color:var(--text-primary); margin:0;">
+              📦 Available Recovery Snapshots (${backupsList.length})
+            </h4>
+            <span style="font-size:11px; color:var(--text-tertiary);">
+              Auto-rotated based on retention policy
+            </span>
+          </div>
+
+          ${backupsList.length === 0 ? `
+            <div style="text-align:center; padding:24px 16px; color:var(--text-tertiary); font-size:var(--font-size-sm);">
+              No backup snapshots saved yet. Click <strong>"Create Backup Snapshot Now"</strong> or enable periodic auto-backup above.
+            </div>
+          ` : `
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              ${backupsList.map(b => {
+                const idOrName = b.filename || b.id;
+                const sizeText = b.sizeBytes < 1024 ? `${b.sizeBytes} B` : b.sizeBytes < 1048576 ? `${(b.sizeBytes / 1024).toFixed(1)} KB` : `${(b.sizeBytes / 1048576).toFixed(1)} MB`;
+                const dateText = new Date(b.createdAt).toLocaleString();
+                return `
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:var(--bg-card); border:1px solid var(--border-primary); border-radius:var(--border-radius-md); padding:10px 14px;">
+                    <div>
+                      <div style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                        <span>📄 ${escapeHtml(b.filename || b.id)}</span>
+                        <span style="font-size:10px; background:rgba(99,102,241,0.12); color:var(--accent-primary); padding:1px 6px; border-radius:4px; font-weight:600;">${sizeText}</span>
+                      </div>
+                      <div style="font-size:11px; color:var(--text-tertiary); margin-top:2px;">
+                        ${dateText} • <strong>${b.itemsCount !== undefined ? b.itemsCount : '?'}</strong> components • <strong>${b.imagesCount !== undefined ? b.imagesCount : '?'}</strong> photos
+                      </div>
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                      <button type="button" class="btn btn-secondary btn-sm btn-snapshot-download" data-target="${escapeAttr(idOrName)}" style="padding:4px 8px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;" title="Download JSON file">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download
+                      </button>
+                      <button type="button" class="btn btn-secondary btn-sm btn-snapshot-restore" data-target="${escapeAttr(idOrName)}" data-date="${escapeAttr(dateText)}" style="padding:4px 8px; font-size:11.5px; color:#10b981; display:inline-flex; align-items:center; gap:4px;" title="Restore inventory from this snapshot">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        Restore
+                      </button>
+                      <button type="button" class="btn btn-secondary btn-sm btn-snapshot-delete" data-target="${escapeAttr(idOrName)}" style="padding:4px 8px; font-size:11.5px; color:var(--accent-danger);" title="Delete snapshot">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
+
+        <!-- Best Backup Strategies Guide Card -->
+        <details style="background:rgba(99,102,241,0.04); border:1px solid rgba(99,102,241,0.2); border-radius:var(--border-radius-lg); padding:12px 16px; cursor:pointer;">
+          <summary style="font-size:var(--font-size-sm); font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+            <span>🛡️ Best Backup Strategies for Electronics & Makers</span>
+            <span style="font-size:11px; color:var(--accent-primary); font-weight:400; margin-left:auto;">(Click to view best practices)</span>
+          </summary>
+          <div style="font-size:var(--font-size-xs); color:var(--text-secondary); line-height:1.6; margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+            <div>
+              <strong style="color:var(--text-primary);">1. The 3-2-1 Backup Rule:</strong>
+              <p style="margin:2px 0 0 0;">
+                Keep at least <strong>3 copies</strong> of your inventory data, on <strong>2 different media types</strong> (e.g. Raspberry Pi micro-SD/SSD and local workstation/NAS), with <strong>1 copy off-site</strong> (e.g. Google Drive, Nextcloud, or automated GitHub private repo backup).
+              </p>
+            </div>
+            <div>
+              <strong style="color:var(--text-primary);">2. Embedded Photo Preservation:</strong>
+              <p style="margin:2px 0 0 0;">
+                SimVentory JSON backups embed base64-encoded component photos along with IC markings, SKU barcodes, pinouts, and custom locations. This ensures you never suffer from broken image links even if moving servers or browsers.
+              </p>
+            </div>
+            <div>
+              <strong style="color:var(--text-primary);">3. Recommended Schedule:</strong>
+              <p style="margin:2px 0 0 0;">
+                - <strong>Active Workshop (Daily additions):</strong> Set to <em>Every 24 Hours</em> with <em>7-14 snapshots</em> retention.<br/>
+                - <strong>Occasional Weekend Tinkerer:</strong> Set to <em>Every 7 Days (Weekly)</em> with <em>5 snapshots</em> retention.<br/>
+                - <strong>Docker Host / Homelab:</strong> Mount the host volume <code>./data:/app/data</code> in your <code>docker-compose.yml</code> so snapshots in <code>data/backups/</code> are instantly protected by your host machine's daily backup tools (e.g. Restic, Borg, or Synology Hyper Backup).
+              </p>
+            </div>
+          </div>
+        </details>
+      </div>
+
       <!-- Data Management -->
       <div class="settings-section">
-        <h3>💾 Data Management</h3>
+        <h3>💾 Manual Export & Import</h3>
         <div class="settings-row">
           <div class="settings-row-info">
             <h4>Export as JSON</h4>
-            <p>Full backup including component images, custom categories, and locations — ${items.length} item${items.length !== 1 ? 's' : ''}</p>
+            <p>Full manual backup file download including component images, custom categories, and locations — ${items.length} item${items.length !== 1 ? 's' : ''}</p>
           </div>
           <button class="btn btn-primary btn-sm" id="export-json-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export JSON
           </button>
         </div>
@@ -452,14 +622,14 @@ export async function renderSettings(container, { refreshView }) {
             <p>Spreadsheet-friendly format (components list with stock, SKU, and locations)</p>
           </div>
           <button class="btn btn-primary btn-sm" id="export-csv-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export CSV
           </button>
         </div>
         <div class="settings-row">
           <div class="settings-row-info">
             <h4>Import from JSON</h4>
-            <p>Restore a previous backup (preserves custom categories & images)</p>
+            <p>Restore a previous backup file from your computer (preserves custom categories & images)</p>
           </div>
           <div>
             <input type="file" id="import-file-input" accept=".json" hidden />
@@ -1007,6 +1177,110 @@ export async function renderSettings(container, { refreshView }) {
       showToast('AI Settings & Grounding preferences saved successfully!', 'success');
     });
   }
+
+  // ---- Periodic Backup & Snapshot Controls ----
+  const periodicBackupToggle = document.getElementById('backup-enabled-toggle');
+  if (periodicBackupToggle) {
+    periodicBackupToggle.addEventListener('change', async (e) => {
+      const enabled = e.target.checked;
+      await saveBackupSettings({ enabled });
+      const badge = document.getElementById('backup-status-badge');
+      if (badge) {
+        badge.textContent = enabled ? '● Active' : '○ Disabled';
+        badge.style.background = enabled ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)';
+        badge.style.color = enabled ? '#10b981' : 'var(--text-tertiary)';
+        badge.style.border = enabled ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border-primary)';
+      }
+      showToast(enabled ? '⏰ Periodic automated backup enabled!' : 'Periodic backup disabled', 'info');
+    });
+  }
+
+  const backupIntervalSelect = document.getElementById('backup-interval-select');
+  if (backupIntervalSelect) {
+    backupIntervalSelect.addEventListener('change', async (e) => {
+      const intervalDays = parseInt(e.target.value, 10) || 1;
+      await saveBackupSettings({ intervalDays });
+      showToast(`Backup frequency set to every ${intervalDays === 1 ? '24 hours' : `${intervalDays} days`}`, 'success');
+    });
+  }
+
+  const backupRetentionSelect = document.getElementById('backup-retention-select');
+  if (backupRetentionSelect) {
+    backupRetentionSelect.addEventListener('change', async (e) => {
+      const maxBackups = parseInt(e.target.value, 10) || 7;
+      await saveBackupSettings({ maxBackups });
+      showToast(`Retention set to keep last ${maxBackups} snapshots`, 'success');
+    });
+  }
+
+  const backupAutoDownloadToggle = document.getElementById('backup-autodownload-toggle');
+  if (backupAutoDownloadToggle) {
+    backupAutoDownloadToggle.addEventListener('change', async (e) => {
+      await saveBackupSettings({ autoDownload: e.target.checked });
+      showToast(e.target.checked ? 'Auto-download to PC enabled' : 'Auto-download to PC disabled', 'info');
+    });
+  }
+
+  const btnBackupNow = document.getElementById('btn-backup-now');
+  if (btnBackupNow) {
+    btnBackupNow.addEventListener('click', async () => {
+      btnBackupNow.disabled = true;
+      showToast('Creating backup snapshot...', 'info');
+      try {
+        const record = await triggerBackupNow('manual');
+        showToast(`✓ Backup snapshot saved! (${record.itemsCount} components)`, 'success');
+        refreshView();
+      } catch (err) {
+        showToast('Backup failed: ' + err.message, 'error');
+        btnBackupNow.disabled = false;
+      }
+    });
+  }
+
+  // Snapshot list action handlers
+  container.querySelectorAll('.btn-snapshot-download').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const target = btn.dataset.target;
+      try {
+        showToast('Preparing download...', 'info');
+        await downloadBackup(target);
+      } catch (err) {
+        showToast('Download failed: ' + err.message, 'error');
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-snapshot-restore').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const target = btn.dataset.target;
+      const dateText = btn.dataset.date || '';
+      if (!confirm(`Are you sure you want to restore inventory from snapshot (${dateText})?\n\nThis will replace current inventory items with the snapshot contents.`)) {
+        return;
+      }
+      try {
+        showToast('Restoring snapshot...', 'info');
+        const res = await restoreBackup(target);
+        showToast(`✨ Restored ${res.count || 'all'} items from backup!`, 'success');
+        refreshView();
+      } catch (err) {
+        showToast('Restore failed: ' + err.message, 'error');
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-snapshot-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const target = btn.dataset.target;
+      if (!confirm(`Delete backup snapshot "${target}"?`)) return;
+      try {
+        await deleteBackup(target);
+        showToast('Snapshot deleted', 'info');
+        refreshView();
+      } catch (err) {
+        showToast('Failed deleting snapshot: ' + err.message, 'error');
+      }
+    });
+  });
 
   // Export JSON
   document.getElementById('export-json-btn').addEventListener('click', async () => {

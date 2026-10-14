@@ -15,11 +15,13 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
+const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 const DB_FILE = path.join(DATA_DIR, 'inventory.json');
 
 // Ensure data directories exist
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR, { recursive: true });
+if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
 
 const DEFAULT_CATEGORIES = [
   { name: 'Sensors', color: '#f472b6', icon: '📡', isDefault: true },
@@ -352,8 +354,8 @@ app.post('/api/history', (req, res) => {
   res.json({ success: true, entry });
 });
 
-// Export full backup (JSON format with base64 images)
-app.get('/api/export', (req, res) => {
+// Helper: generate full backup JSON structure
+function generateBackupPayload() {
   const images = [];
   for (const item of db.items) {
     const imageInfo = findImageFile(item.id);
@@ -368,7 +370,7 @@ app.get('/api/export', (req, res) => {
     }
   }
 
-  res.json({
+  return {
     version: 1,
     exportedAt: new Date().toISOString(),
     items: db.items,
@@ -377,20 +379,21 @@ app.get('/api/export', (req, res) => {
     settings: db.settings || {},
     images,
     history: db.history,
-  });
-});
+  };
+}
 
-// Import full backup
-app.post('/api/import', (req, res) => {
-  const data = req.body;
+// Helper: restore database and images from backup payload
+function restoreFromPayload(data) {
   if (!data || !Array.isArray(data.items)) {
-    return res.status(400).json({ error: 'Invalid backup data' });
+    throw new Error('Invalid backup data: items array missing');
   }
 
   // Clear existing images
-  const files = fs.readdirSync(IMAGES_DIR);
-  for (const file of files) {
-    fs.unlinkSync(path.join(IMAGES_DIR, file));
+  if (fs.existsSync(IMAGES_DIR)) {
+    const files = fs.readdirSync(IMAGES_DIR);
+    for (const file of files) {
+      try { fs.unlinkSync(path.join(IMAGES_DIR, file)); } catch (_) {}
+    }
   }
 
   db.items = data.items;
@@ -398,7 +401,7 @@ app.post('/api/import', (req, res) => {
   db.locations = Array.isArray(data.locations) ? data.locations : [];
   db.history = Array.isArray(data.history) ? data.history : [];
   if (data.settings && typeof data.settings === 'object') {
-    db.settings = data.settings;
+    db.settings = { ...db.settings, ...data.settings };
   }
 
   // Restore images from base64
@@ -421,7 +424,210 @@ app.post('/api/import', (req, res) => {
   }
 
   saveDatabase();
-  res.json({ success: true, count: db.items.length });
+  return { itemsCount: db.items.length };
+}
+
+// Helper: perform snapshot save to data/backups/
+function performServerBackup(note = 'auto') {
+  if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+  const payload = generateBackupPayload();
+  const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `simventory-backup-${dateStr}.json`;
+  const filePath = path.join(BACKUPS_DIR, filename);
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+
+  const stat = fs.statSync(filePath);
+
+  db.settings = db.settings || {};
+  db.settings.backup = db.settings.backup || {};
+  db.settings.backup.lastBackupAt = payload.exportedAt;
+  db.settings.backup.lastBackupFile = filename;
+  saveDatabase();
+
+  const maxBackups = Number(db.settings.backup.maxBackups) || 7;
+  pruneServerBackups(maxBackups);
+
+  return {
+    filename,
+    sizeBytes: stat.size,
+    createdAt: payload.exportedAt,
+    itemsCount: payload.items.length,
+    imagesCount: payload.images.length,
+    note,
+  };
+}
+
+// Helper: prune old backups exceeding retention limit
+function pruneServerBackups(maxKeep = 7) {
+  if (!fs.existsSync(BACKUPS_DIR)) return;
+  try {
+    const files = fs.readdirSync(BACKUPS_DIR)
+      .filter(f => f.startsWith('simventory-backup-') && f.endsWith('.json'))
+      .map(f => {
+        const fullPath = path.join(BACKUPS_DIR, f);
+        const stat = fs.statSync(fullPath);
+        return { filename: f, fullPath, mtime: stat.mtimeMs };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+
+    if (files.length > maxKeep) {
+      const toDelete = files.slice(maxKeep);
+      for (const f of toDelete) {
+        try {
+          fs.unlinkSync(f.fullPath);
+          console.log(`[SimVentory Backup] Rotated old backup snapshot: ${f.filename}`);
+        } catch (_) {}
+      }
+    }
+  } catch (err) {
+    console.warn('[SimVentory Backup] Backup prune warning:', err.message);
+  }
+}
+
+// Helper: list server-side snapshots
+function listServerBackups() {
+  if (!fs.existsSync(BACKUPS_DIR)) return [];
+  try {
+    const files = fs.readdirSync(BACKUPS_DIR)
+      .filter(f => f.startsWith('simventory-backup-') && f.endsWith('.json'))
+      .map(f => {
+        const fullPath = path.join(BACKUPS_DIR, f);
+        const stat = fs.statSync(fullPath);
+        let itemsCount = null;
+        let imagesCount = null;
+        let exportedAt = stat.mtime.toISOString();
+        try {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed.items)) itemsCount = parsed.items.length;
+          if (Array.isArray(parsed.images)) imagesCount = parsed.images.length;
+          if (parsed.exportedAt) exportedAt = parsed.exportedAt;
+        } catch (_) {}
+
+        return {
+          filename: f,
+          sizeBytes: stat.size,
+          createdAt: exportedAt,
+          itemsCount: itemsCount !== null ? itemsCount : db.items.length,
+          imagesCount: imagesCount !== null ? imagesCount : 0,
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    return files;
+  } catch (_) {
+    return [];
+  }
+}
+
+// Periodic automated backup check
+function checkPeriodicBackup() {
+  try {
+    const backupSettings = db.settings?.backup;
+    if (!backupSettings || !backupSettings.enabled) return;
+
+    const intervalDays = Number(backupSettings.intervalDays) || 1;
+    const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
+    const lastBackupTime = backupSettings.lastBackupAt ? new Date(backupSettings.lastBackupAt).getTime() : 0;
+    const now = Date.now();
+
+    if (now - lastBackupTime >= intervalMs) {
+      console.log(`[SimVentory Backup] Running periodic backup (${intervalDays} day interval)...`);
+      const res = performServerBackup('periodic');
+      console.log(`[SimVentory Backup] Snapshot saved: ${res.filename} (${res.itemsCount} items, ${Math.round(res.sizeBytes / 1024)} KB)`);
+    }
+  } catch (err) {
+    console.error('[SimVentory Backup] Periodic check error:', err.message);
+  }
+}
+
+// Export full backup (JSON format with base64 images)
+app.get('/api/export', (req, res) => {
+  res.json(generateBackupPayload());
+});
+
+// Import full backup
+app.post('/api/import', (req, res) => {
+  try {
+    const result = restoreFromPayload(req.body);
+    res.json({ success: true, count: result.itemsCount });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ---- Backups API (Periodic & Snapshots) ----
+app.get('/api/backups', (req, res) => {
+  const settings = db.settings?.backup || {
+    enabled: false,
+    intervalDays: 1,
+    maxBackups: 7,
+    autoDownload: false,
+    lastBackupAt: null,
+  };
+  const backups = listServerBackups();
+  res.json({ settings, backups });
+});
+
+app.post('/api/backups/settings', (req, res) => {
+  const updates = req.body || {};
+  db.settings = db.settings || {};
+  db.settings.backup = {
+    ...(db.settings.backup || { enabled: false, intervalDays: 1, maxBackups: 7, autoDownload: false }),
+    ...updates,
+  };
+  saveDatabase();
+  if (db.settings.backup.enabled) {
+    setTimeout(checkPeriodicBackup, 1000);
+  }
+  res.json({ success: true, settings: db.settings.backup });
+});
+
+app.post('/api/backups/run', (req, res) => {
+  try {
+    const record = performServerBackup('manual');
+    res.json({ success: true, backup: record });
+  } catch (err) {
+    res.status(500).json({ error: 'Backup failed: ' + err.message });
+  }
+});
+
+app.get('/api/backups/download/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(BACKUPS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Backup file not found' });
+  }
+  res.download(filePath, filename);
+});
+
+app.post('/api/backups/restore/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(BACKUPS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Backup file not found' });
+  }
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content);
+    const result = restoreFromPayload(data);
+    res.json({ success: true, count: result.itemsCount, filename });
+  } catch (err) {
+    res.status(500).json({ error: 'Restore failed: ' + err.message });
+  }
+});
+
+app.delete('/api/backups/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(BACKUPS_DIR, filename);
+  if (fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+      return res.json({ success: true, filename });
+    } catch (err) {
+      return res.status(500).json({ error: 'Delete failed: ' + err.message });
+    }
+  }
+  res.status(404).json({ error: 'Backup file not found' });
 });
 
 // Clear all data
@@ -562,5 +768,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  📍 Local:   http://localhost:${PORT}`);
   console.log(`  🌐 Network: http://0.0.0.0:${PORT}`);
   console.log(`  💾 Storage: ${DATA_DIR}`);
+  console.log(`  📦 Backups: ${BACKUPS_DIR}`);
   console.log(`===============================================`);
+
+  // Start periodic backup ticker (every 15 minutes) and initial check (5s)
+  setInterval(checkPeriodicBackup, 15 * 60 * 1000);
+  setTimeout(checkPeriodicBackup, 5000);
 });

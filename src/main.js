@@ -12,6 +12,7 @@ import { openItemDetailModal } from './views/itemModal.js';
 import { openScannerModal } from './views/scannerModal.js';
 import { fetchAISettings } from './services/aiService.js';
 import { subscribeQueue, getQueueSummary } from './services/queueService.js';
+import { initBackupScheduler } from './services/backupService.js';
 
 // ---- State ----
 let currentView = 'dashboard';
@@ -184,4 +185,5 @@ document.addEventListener('keydown', (e) => {
 // ---- Init ----
 initTheme();
 fetchAISettings().catch(() => {});
+initBackupScheduler().catch(() => {});
 renderCurrentView();
