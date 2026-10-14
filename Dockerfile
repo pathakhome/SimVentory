@@ -30,6 +30,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built frontend assets and server
 COPY --from=builder /app/dist ./dist
 COPY server.js ./
+COPY server/ ./server/
 
 # Create data directory for persistent volume mount
 RUN mkdir -p /app/data
