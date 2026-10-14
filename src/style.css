@@ -810,6 +810,35 @@ img {
   fill: var(--color-warning);
 }
 
+.item-card-duplicate {
+  position: absolute;
+  top: var(--space-md);
+  right: calc(var(--space-md) + 38px);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  z-index: 2;
+  border: none;
+  cursor: pointer;
+}
+
+.item-card-duplicate:hover {
+  color: var(--accent-primary);
+  background: rgba(0, 0, 0, 0.6);
+  transform: scale(1.05);
+}
+
+.item-list-dup:hover {
+  color: var(--accent-primary) !important;
+}
+
 .item-card-body {
   padding: var(--space-base);
 }

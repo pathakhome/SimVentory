@@ -96,6 +96,7 @@ async function renderCurrentView() {
       cleanup = await renderItemForm(mainContent, {
         ...context,
         editItemId: viewParams.editItemId || null,
+        cloneItemId: viewParams.cloneItemId || null,
         prefillPartNumber: viewParams.prefillPartNumber || null,
       });
       break;

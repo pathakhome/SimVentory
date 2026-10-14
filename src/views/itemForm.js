@@ -15,15 +15,17 @@ import { openAIReviewModal } from './aiReviewModal.js';
  * @param {HTMLElement} container
  * @param {Object} options
  * @param {string|null} options.editItemId - If set, we're editing an existing item
+ * @param {string|null} options.cloneItemId - If set, we're cloning an existing item
  * @param {string|null} options.prefillPartNumber - Pre-fill part number from scanner
  */
-export async function renderItemForm(container, { navigateTo, refreshView, openScanner, editItemId = null, prefillPartNumber = null }) {
+export async function renderItemForm(container, { navigateTo, refreshView, openScanner, editItemId = null, cloneItemId = null, prefillPartNumber = null }) {
   let item = createDefaultItem();
   let imageFile = null;     // New file selected by user
   let existingImageUrl = null; // Object URL of existing image from DB
   let removeImage = false;
 
   const isEdit = !!editItemId;
+  const isClone = !isEdit && !!cloneItemId;
 
   if (isEdit) {
     const existing = await getItem(editItemId);
@@ -32,6 +34,16 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       const blob = await getImage(editItemId);
       if (blob) {
         existingImageUrl = URL.createObjectURL(blob);
+      }
+    }
+  } else if (isClone) {
+    const existing = await getItem(cloneItemId);
+    if (existing) {
+      item = { ...item, ...existing, id: undefined, createdAt: undefined, updatedAt: undefined };
+      const blob = await getImage(cloneItemId);
+      if (blob) {
+        existingImageUrl = URL.createObjectURL(blob);
+        imageFile = blob; // Pre-load cloned blob so it persists for the new ID
       }
     }
   } else if (prefillPartNumber) {
@@ -50,8 +62,8 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
   container.innerHTML = `
     <div class="fade-in">
       <div class="view-header">
-        <h1>${isEdit ? 'Edit Component' : 'Add Component'}</h1>
-        <p>${isEdit ? `Editing: ${item.name}` : 'Add a new electronic component to your inventory'}</p>
+        <h1>${isEdit ? 'Edit Component' : isClone ? 'Duplicate Component' : 'Add Component'}</h1>
+        <p>${isEdit ? `Editing: ${item.name}` : isClone ? `Duplicating: ${item.name} — adjust condition, location, or quantity for this batch` : 'Add a new electronic component to your inventory'}</p>
       </div>
 
       <form class="item-form" id="item-form">
@@ -256,7 +268,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="form-submit-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              ${isEdit ? 'Save Changes' : 'Add Component'}
+              ${isEdit ? 'Save Changes' : isClone ? 'Create Duplicate' : 'Add Component'}
             </button>
             <button type="button" class="btn btn-secondary" id="form-cancel-btn">Cancel</button>
           </div>
@@ -842,13 +854,13 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
     await addHistory(id, isEdit ? 'updated' : 'created', savedItem.quantity);
 
-    showToast(isEdit ? 'Component updated!' : 'Component added!', 'success');
+    showToast(isEdit ? 'Component updated!' : isClone ? 'Duplicate component created!' : 'Component added!', 'success');
     navigateTo('inventory');
   });
 
   // Cancel
   document.getElementById('form-cancel-btn').addEventListener('click', () => {
-    navigateTo(isEdit ? 'inventory' : 'dashboard');
+    navigateTo(isEdit || isClone ? 'inventory' : 'dashboard');
   });
 }
 

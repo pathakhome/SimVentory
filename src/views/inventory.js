@@ -405,6 +405,9 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           ${imgSrc ? `<img src="${imgSrc}" alt="${escapeHtml(item.name)}" loading="lazy"/>` : `
             <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           `}
+          <button class="item-card-duplicate" data-dup-id="${item.id}" title="Duplicate this component (different condition / location)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
           <button class="item-card-favorite ${item.isFavorite ? 'active' : ''}" data-fav-id="${item.id}" title="Toggle favorite">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="${item.isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           </button>
@@ -472,6 +475,9 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           ${locations.map(loc => `<option value="${escapeHtml(loc.name)}" ${item.location === loc.name ? 'selected' : ''}>📍 ${escapeHtml(loc.name)}</option>`).join('')}
         </select>
         <span class="item-list-qty item-qty-value ${qtyClass}">${item.quantity}</span>
+        <span class="item-list-dup" data-dup-id="${item.id}" title="Duplicate component (new condition/location)" style="cursor: pointer; color: var(--text-tertiary); display: flex; align-items: center; padding: 4px; border-radius: 4px; transition: color 0.15s ease;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </span>
         <span class="item-list-fav ${item.isFavorite ? 'active' : ''}" data-fav-id="${item.id}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="${item.isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </span>
@@ -524,6 +530,8 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
           e.target.closest('.qty-btn') ||
           e.target.closest('.item-card-favorite') ||
           e.target.closest('.item-list-fav') ||
+          e.target.closest('.item-card-duplicate') ||
+          e.target.closest('.item-list-dup') ||
           e.target.closest('.item-select-checkbox') ||
           e.target.closest('.item-select-checkbox-list') ||
           e.target.closest('.card-inline-select')
@@ -651,6 +659,17 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
         item.updatedAt = new Date().toISOString();
         await saveItem(item);
         renderItems();
+      });
+    });
+
+    // Duplicate component click
+    container.querySelectorAll('[data-dup-id]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = el.dataset.dupId;
+        if (id && navigateTo) {
+          navigateTo('add-item', { cloneItemId: id });
+        }
       });
     });
   }

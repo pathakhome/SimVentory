@@ -142,6 +142,10 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
         </button>
       ` : `<span></span>`}
       <div style="display: flex; gap: 8px; margin-left: auto;">
+        <button class="btn btn-secondary btn-sm" id="modal-duplicate-btn" title="Duplicate component (new condition, location, or batch)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Duplicate
+        </button>
         <button class="btn btn-primary btn-sm" id="modal-edit-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit
@@ -282,6 +286,12 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
       openItemDetailModal(itemId, { navigateTo, refreshView });
     });
   }
+
+  // Duplicate
+  document.getElementById('modal-duplicate-btn')?.addEventListener('click', () => {
+    closeModal();
+    navigateTo('add-item', { cloneItemId: itemId });
+  });
 
   // Edit
   document.getElementById('modal-edit-btn').addEventListener('click', () => {

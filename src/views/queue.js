@@ -15,6 +15,7 @@ import {
   discardQueueItem,
   clearQueue,
   retryQueueItem,
+  duplicateQueueItem,
   subscribeQueue,
   updateQueueItem,
 } from '../services/queueService.js';
@@ -359,6 +360,10 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 Fine-tune Details
               </button>
+              <button type="button" class="btn btn-secondary btn-sm btn-duplicate-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;" title="Duplicate card to split into another condition or location">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Duplicate
+              </button>
               <button type="button" class="btn btn-primary btn-sm btn-approve-queue" data-id="${item.id}" style="padding: 4px 12px; font-size: 11.5px; background: linear-gradient(135deg, #10b981, #059669); border: none; display: inline-flex; align-items: center; gap: 4px;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 Approve & Add
@@ -435,6 +440,41 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             showToast('Changes saved to queued card', 'info');
           },
         });
+      });
+    }
+
+    const dupBtn = card.querySelector('.btn-duplicate-queue');
+    if (dupBtn && !dupBtn._bound) {
+      dupBtn._bound = true;
+      dupBtn.addEventListener('click', async () => {
+        // Sync any typed values on this card before cloning
+        const nameVal = card.querySelector('.queue-item-name')?.value.trim();
+        const locVal = card.querySelector('.queue-item-location')?.value.trim();
+        const catVal = card.querySelector('.queue-item-cat')?.value;
+        const condVal = card.querySelector('.queue-item-condition')?.value;
+        const qtyVal = parseInt(card.querySelector('.queue-item-qty')?.value, 10);
+        const partVal = card.querySelector('.queue-item-partnum')?.value.trim();
+
+        const updates = {};
+        if (nameVal) updates.name = nameVal;
+        if (locVal) updates.location = locVal;
+        if (catVal) updates.category = catVal;
+        if (condVal) updates.condition = condVal;
+        if (Number.isFinite(qtyVal)) updates.quantity = qtyVal;
+        if (partVal) updates.partNumber = partVal;
+
+        if (Object.keys(updates).length > 0) {
+          updateQueueItem(id, updates, { silent: true, userInitiated: true });
+        }
+
+        dupBtn.disabled = true;
+        try {
+          const clone = await duplicateQueueItem(id);
+          showToast(`📋 Duplicated "${clone.name || 'Component'}" card! Set new location / condition.`, 'success');
+        } catch (err) {
+          showToast('Failed to duplicate card: ' + err.message, 'error');
+          dupBtn.disabled = false;
+        }
       });
     }
 
@@ -767,6 +807,10 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
             <button type="button" class="btn btn-secondary btn-sm btn-inspect-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               Fine-tune Details
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm btn-duplicate-queue" data-id="${item.id}" style="padding: 4px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;" title="Duplicate card to split into another condition or location">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Duplicate
             </button>
             <button type="button" class="btn btn-primary btn-sm btn-approve-queue" data-id="${item.id}" style="padding: 4px 12px; font-size: 11.5px; background: linear-gradient(135deg, #10b981, #059669); border: none; display: inline-flex; align-items: center; gap: 4px;">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
