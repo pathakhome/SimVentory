@@ -8,6 +8,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { testRemoteStorage, uploadToRemoteStorage } from './server/remoteStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -138,6 +139,7 @@ app.post('/api/items', (req, res) => {
   }
 
   saveDatabase();
+  recordWorkshopActivity('save_item');
   res.json({ success: true, item });
 });
 
@@ -151,6 +153,7 @@ app.delete('/api/items/:id', (req, res) => {
   deleteImageFile(id);
 
   saveDatabase();
+  recordWorkshopActivity('delete_item');
   res.json({ success: true });
 });
 
@@ -351,6 +354,7 @@ app.post('/api/history', (req, res) => {
   db.history.push(entry);
 
   saveDatabase();
+  recordWorkshopActivity('history_entry');
   res.json({ success: true, entry });
 });
 
@@ -427,7 +431,26 @@ function restoreFromPayload(data) {
   return { itemsCount: db.items.length };
 }
 
-// Helper: perform snapshot save to data/backups/
+// Workshop level activity tracker
+function recordWorkshopActivity(action = 'change') {
+  db.settings = db.settings || {};
+  db.settings.backup = db.settings.backup || {};
+  db.settings.backup.activityCounter = (db.settings.backup.activityCounter || 0) + 1;
+
+  const backupSettings = db.settings.backup;
+  if (backupSettings.activityBased && Number(backupSettings.activityThreshold) > 0) {
+    if (db.settings.backup.activityCounter >= Number(backupSettings.activityThreshold)) {
+      console.log(`[SimVentory Backup] Workshop activity threshold (${backupSettings.activityThreshold} changes) reached. Running automated backup...`);
+      db.settings.backup.activityCounter = 0;
+      saveDatabase();
+      performServerBackup('activity');
+      return;
+    }
+  }
+  saveDatabase();
+}
+
+// Helper: perform snapshot save to data/backups/ and sync to remote FTP/SFTP/SMB
 function performServerBackup(note = 'auto') {
   if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
   const payload = generateBackupPayload();
@@ -442,10 +465,31 @@ function performServerBackup(note = 'auto') {
   db.settings.backup = db.settings.backup || {};
   db.settings.backup.lastBackupAt = payload.exportedAt;
   db.settings.backup.lastBackupFile = filename;
+  db.settings.backup.activityCounter = 0; // reset counter after successful backup
   saveDatabase();
 
   const maxBackups = Number(db.settings.backup.maxBackups) || 7;
   pruneServerBackups(maxBackups);
+
+  // If remote FTP/SFTP/SMB backup is configured and enabled:
+  if (db.settings.backup.remote?.enabled && db.settings.backup.remote?.protocol && db.settings.backup.remote?.host) {
+    const remoteCfg = db.settings.backup.remote;
+    console.log(`[SimVentory Backup] Uploading snapshot to remote ${remoteCfg.protocol.toUpperCase()} server (${remoteCfg.host})...`);
+    uploadToRemoteStorage(remoteCfg, filePath, filename, maxBackups)
+      .then(() => {
+        console.log(`[SimVentory Backup] ✓ Remote ${remoteCfg.protocol.toUpperCase()} upload & prune completed.`);
+        db.settings.backup.remote.lastUploadAt = new Date().toISOString();
+        db.settings.backup.remote.lastStatus = 'success';
+        db.settings.backup.remote.lastError = null;
+        saveDatabase();
+      })
+      .catch((err) => {
+        console.error(`[SimVentory Backup] ⚠️ Remote ${remoteCfg.protocol.toUpperCase()} upload error:`, err.message);
+        db.settings.backup.remote.lastStatus = 'error';
+        db.settings.backup.remote.lastError = err.message;
+        saveDatabase();
+      });
+  }
 
   return {
     filename,
@@ -519,21 +563,40 @@ function listServerBackups() {
   }
 }
 
-// Periodic automated backup check
+// Periodic automated backup check (Interval + User-Decided Time of Day)
 function checkPeriodicBackup() {
   try {
     const backupSettings = db.settings?.backup;
     if (!backupSettings || !backupSettings.enabled) return;
 
+    const now = new Date();
     const intervalDays = Number(backupSettings.intervalDays) || 1;
     const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
     const lastBackupTime = backupSettings.lastBackupAt ? new Date(backupSettings.lastBackupAt).getTime() : 0;
-    const now = Date.now();
 
-    if (now - lastBackupTime >= intervalMs) {
-      console.log(`[SimVentory Backup] Running periodic backup (${intervalDays} day interval)...`);
-      const res = performServerBackup('periodic');
-      console.log(`[SimVentory Backup] Snapshot saved: ${res.filename} (${res.itemsCount} items, ${Math.round(res.sizeBytes / 1024)} KB)`);
+    // Check if user set a specific preferred time of day (e.g. "02:00")
+    if (backupSettings.preferredTime && /^\d{2}:\d{2}$/.test(backupSettings.preferredTime)) {
+      const [targetH, targetM] = backupSettings.preferredTime.split(':').map(Number);
+      const currentH = now.getHours();
+      const currentM = now.getMinutes();
+
+      const lastDateStr = backupSettings.lastBackupAt ? backupSettings.lastBackupAt.slice(0, 10) : '';
+      const todayDateStr = now.toISOString().slice(0, 10);
+
+      // If at least intervalDays elapsed or not run on today's scheduled window
+      if (now.getTime() - lastBackupTime >= (intervalDays - 0.5) * 24 * 60 * 60 * 1000) {
+        if (todayDateStr !== lastDateStr && (currentH > targetH || (currentH === targetH && currentM >= targetM))) {
+          console.log(`[SimVentory Backup] Scheduled time (${backupSettings.preferredTime}) reached. Running daily backup...`);
+          performServerBackup('scheduled_time');
+          return;
+        }
+      }
+    } else {
+      // Standard elapsed interval check
+      if (now.getTime() - lastBackupTime >= intervalMs) {
+        console.log(`[SimVentory Backup] Running periodic backup (${intervalDays} day interval)...`);
+        performServerBackup('periodic');
+      }
     }
   } catch (err) {
     console.error('[SimVentory Backup] Periodic check error:', err.message);
@@ -628,6 +691,17 @@ app.delete('/api/backups/:filename', (req, res) => {
     }
   }
   res.status(404).json({ error: 'Backup file not found' });
+});
+
+// Test remote FTP/SFTP/SMB connection and write permission
+app.post('/api/backups/test-remote', async (req, res) => {
+  try {
+    const config = req.body;
+    const result = await testRemoteStorage(config);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Clear all data

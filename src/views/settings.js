@@ -35,6 +35,7 @@ import {
   downloadBackup,
   restoreBackup,
   deleteBackup,
+  testRemoteBackup,
 } from '../services/backupService.js';
 
 export async function renderSettings(container, { refreshView }) {
@@ -464,7 +465,7 @@ export async function renderSettings(container, { refreshView }) {
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border-primary);">
             <div>
               <div style="font-weight:600; font-size:var(--font-size-sm); color:var(--text-primary); display:flex; align-items:center; gap:8px;">
-                <span>Periodic Auto-Backup</span>
+                <span>⏰ Periodic Auto-Backup</span>
                 <span id="backup-status-badge" style="font-size:11px; padding:2px 8px; border-radius:99px; ${backupSettings.enabled ? 'background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);' : 'background:var(--bg-tertiary); color:var(--text-tertiary); border:1px solid var(--border-primary);'}">
                   ${backupSettings.enabled ? '● Active' : '○ Disabled'}
                 </span>
@@ -481,7 +482,7 @@ export async function renderSettings(container, { refreshView }) {
           </div>
 
           <!-- Schedule Parameters Grid -->
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px;">
             <div>
               <label for="backup-interval-select" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
                 Backup Frequency:
@@ -496,29 +497,186 @@ export async function renderSettings(container, { refreshView }) {
             </div>
 
             <div>
+              <label for="backup-time-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
+                Preferred Backup Time (24h):
+              </label>
+              <input type="time" id="backup-time-input" value="${escapeAttr(backupSettings.preferredTime || '02:00')}" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              <div style="font-size:10.5px; color:var(--text-tertiary); margin-top:3px;">e.g. 02:00 (Quiet workshop hours)</div>
+            </div>
+
+            <div>
               <label for="backup-retention-select" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
-                Retention (Rotation):
+                Retention Limit (Auto-Prune):
               </label>
               <select id="backup-retention-select" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);">
                 <option value="3" ${backupSettings.maxBackups === 3 ? 'selected' : ''}>Keep last 3 snapshots</option>
                 <option value="5" ${backupSettings.maxBackups === 5 ? 'selected' : ''}>Keep last 5 snapshots</option>
                 <option value="7" ${backupSettings.maxBackups === 7 ? 'selected' : ''}>Keep last 7 snapshots (Recommended)</option>
+                <option value="10" ${backupSettings.maxBackups === 10 ? 'selected' : ''}>Keep last 10 snapshots</option>
                 <option value="14" ${backupSettings.maxBackups === 14 ? 'selected' : ''}>Keep last 14 snapshots</option>
                 <option value="30" ${backupSettings.maxBackups === 30 ? 'selected' : ''}>Keep last 30 snapshots</option>
               </select>
+              <div style="font-size:10.5px; color:var(--text-tertiary); margin-top:3px;">Old snapshots automatically deleted locally & remotely</div>
             </div>
 
             <div style="display:flex; flex-direction:column; justify-content:center;">
               <label style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:6px;">
-                Download Preference:
+                Browser Download Preference:
               </label>
               <label style="display:flex; align-items:center; gap:8px; font-size:var(--font-size-xs); color:var(--text-primary); cursor:pointer;">
                 <input type="checkbox" id="backup-autodownload-toggle" ${backupSettings.autoDownload ? 'checked' : ''} style="cursor:pointer;" />
-                <span>Also trigger file download to PC</span>
+                <span>Trigger file download to PC browser</span>
               </label>
             </div>
           </div>
         </div>
+
+        <!-- Workshop Level Activity-Based Backup -->
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+            <div>
+              <div style="font-weight:600; font-size:var(--font-size-sm); color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                <span>⚡ Workshop Activity-Based Backup</span>
+                <span style="font-size:11px; padding:2px 8px; border-radius:99px; ${backupSettings.activityBased ? 'background:rgba(99,102,241,0.15); color:var(--accent-primary); border:1px solid rgba(99,102,241,0.3);' : 'background:var(--bg-tertiary); color:var(--text-tertiary); border:1px solid var(--border-primary);'}">
+                  ${backupSettings.activityBased ? '● Active' : '○ Disabled'}
+                </span>
+              </div>
+              <p style="color:var(--text-secondary); font-size:var(--font-size-xs); margin:3px 0 0 0;">
+                Automatically takes a snapshot when parts are added, edited, or deleted in the workshop.
+              </p>
+            </div>
+
+            <label class="toggle-switch" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="backup-activity-toggle" ${backupSettings.activityBased ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;" />
+              <span style="font-size:var(--font-size-sm); font-weight:600; color:var(--text-primary);">Enable Activity Trigger</span>
+            </label>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--bg-card); border:1px solid var(--border-primary); border-radius:var(--border-radius-md); padding:10px 14px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label for="backup-threshold-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); white-space:nowrap;">
+                Snapshot after every:
+              </label>
+              <input type="number" id="backup-threshold-input" min="1" max="200" value="${backupSettings.activityThreshold || 10}" style="width:70px; padding:5px 8px; font-size:var(--font-size-sm); font-weight:700; border-radius:6px; border:1px solid var(--border-secondary); background:var(--bg-secondary); color:var(--text-primary); text-align:center;" />
+              <span style="font-size:var(--font-size-xs); color:var(--text-secondary);">modifications</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--text-tertiary); margin-left:auto; display:flex; align-items:center; gap:6px;">
+              <span>Activity status:</span>
+              <strong style="color:var(--accent-primary); font-family:monospace;">${backupSettings.activityCounter || 0} / ${backupSettings.activityThreshold || 10}</strong>
+              <span>pending modifications</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Remote Server Storage Integration (FTP / SFTP / SMB) -->
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--border-primary);">
+            <div>
+              <div style="font-weight:600; font-size:var(--font-size-sm); color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                <span>🌐 Remote Server Storage (FTP / SFTP / SMB / NAS)</span>
+                <span id="remote-status-badge" style="font-size:11px; padding:2px 8px; border-radius:99px; ${backupSettings.remote?.enabled && backupSettings.remote?.protocol !== 'none' ? 'background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);' : 'background:var(--bg-tertiary); color:var(--text-tertiary); border:1px solid var(--border-primary);'}">
+                  ${backupSettings.remote?.enabled && backupSettings.remote?.protocol !== 'none' ? `● ${String(backupSettings.remote?.protocol).toUpperCase()}` : '○ Inactive'}
+                </span>
+              </div>
+              <p style="color:var(--text-secondary); font-size:var(--font-size-xs); margin:3px 0 0 0;">
+                Automatically offload backups to your NAS, Samba server, Windows share, SFTP host, or FTP server. Old remote snapshots are automatically purged according to retention limits.
+              </p>
+            </div>
+
+            <label class="toggle-switch" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="remote-enabled-toggle" ${backupSettings.remote?.enabled ? 'checked' : ''} style="width:18px; height:18px; cursor:pointer;" />
+              <span style="font-size:var(--font-size-sm); font-weight:600; color:var(--text-primary);">Enable Remote Backup</span>
+            </label>
+          </div>
+
+          <!-- Remote Configuration Form -->
+          <div id="remote-config-fields" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+              <div>
+                <label for="remote-protocol-select" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:5px;">
+                  Protocol:
+                </label>
+                <select id="remote-protocol-select" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);">
+                  <option value="none" ${(!backupSettings.remote || backupSettings.remote.protocol === 'none') ? 'selected' : ''}>None (Local only)</option>
+                  <option value="smb" ${backupSettings.remote?.protocol === 'smb' ? 'selected' : ''}>SMB / CIFS (Windows Share / Samba / NAS)</option>
+                  <option value="sftp" ${backupSettings.remote?.protocol === 'sftp' ? 'selected' : ''}>SFTP (SSH File Transfer Protocol)</option>
+                  <option value="ftp" ${backupSettings.remote?.protocol === 'ftp' ? 'selected' : ''}>FTP / FTPS (File Transfer Protocol)</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="remote-host-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:5px;">
+                  Server Host / IP Address:
+                </label>
+                <input type="text" id="remote-host-input" placeholder="e.g. 192.168.1.50 or truenas.local" value="${escapeAttr(backupSettings.remote?.host || '')}" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); font-family:monospace; border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              </div>
+
+              <div style="max-width:140px;">
+                <label for="remote-port-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:5px;">
+                  Port:
+                </label>
+                <input type="number" id="remote-port-input" value="${backupSettings.remote?.port || (backupSettings.remote?.protocol === 'sftp' ? 22 : backupSettings.remote?.protocol === 'smb' ? 445 : 21)}" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); font-family:monospace; border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+              <div>
+                <label for="remote-user-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:5px;">
+                  Username:
+                </label>
+                <input type="text" id="remote-user-input" placeholder="e.g. maker or admin" value="${escapeAttr(backupSettings.remote?.username || '')}" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              </div>
+
+              <div>
+                <label for="remote-password-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:5px;">
+                  Password / Secret:
+                </label>
+                <input type="password" id="remote-password-input" placeholder="••••••••" value="${escapeAttr(backupSettings.remote?.password || '')}" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              </div>
+
+              <div>
+                <label for="remote-path-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary); display:block; margin-bottom:5px;">
+                  <span id="remote-path-label">Remote Share / Directory Path:</span>
+                </label>
+                <input type="text" id="remote-path-input" placeholder="/backups/simventory or Backups\\SimVentory" value="${escapeAttr(backupSettings.remote?.remotePath || '/backups/simventory')}" style="width:100%; padding:7px 10px; font-size:var(--font-size-sm); font-family:monospace; border-radius:var(--border-radius-md); border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              </div>
+            </div>
+
+            <!-- Protocol specific options -->
+            <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+              <div id="remote-domain-wrapper" style="display:${backupSettings.remote?.protocol === 'smb' ? 'flex' : 'none'}; align-items:center; gap:8px;">
+                <label for="remote-domain-input" style="font-size:var(--font-size-xs); font-weight:600; color:var(--text-secondary);">SMB Domain:</label>
+                <input type="text" id="remote-domain-input" value="${escapeAttr(backupSettings.remote?.domain || 'WORKGROUP')}" placeholder="WORKGROUP" style="width:130px; padding:5px 8px; font-size:var(--font-size-sm); border-radius:6px; border:1px solid var(--border-secondary); background:var(--bg-card); color:var(--text-primary);" />
+              </div>
+
+              <div id="remote-secure-wrapper" style="display:${backupSettings.remote?.protocol === 'ftp' ? 'flex' : 'none'}; align-items:center; gap:8px;">
+                <label style="display:flex; align-items:center; gap:6px; font-size:var(--font-size-xs); color:var(--text-primary); cursor:pointer;">
+                  <input type="checkbox" id="remote-secure-input" ${backupSettings.remote?.secure ? 'checked' : ''} style="cursor:pointer;" />
+                  <span>Use FTPS (Explicit TLS)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Action buttons & Test connection status -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:6px; padding-top:10px; border-top:1px solid var(--border-primary);">
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-test-remote" style="display:inline-flex; align-items:center; gap:6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+                  Test Connection
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-save-remote" style="display:inline-flex; align-items:center; gap:6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  Save Remote Settings
+                </button>
+              </div>
+
+              <div id="remote-test-status" style="font-size:11.5px; color:var(--text-tertiary);">
+                ${backupSettings.remote?.lastStatus ? `Last sync: <span style="color:${backupSettings.remote.lastStatus === 'success' ? '#10b981' : 'var(--accent-danger)'}">${escapeHtml(backupSettings.remote.lastStatus)}</span> ${backupSettings.remote.lastUploadAt ? `(${new Date(backupSettings.remote.lastUploadAt).toLocaleString()})` : ''}` : 'Configure remote details and click Test Connection'}
+              </div>
+            </div>
+          </div>
+        </div>
+
 
         <!-- Snapshots Vault Table / List -->
         <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px; margin-bottom:16px;">
@@ -594,9 +752,15 @@ export async function renderSettings(container, { refreshView }) {
             <div>
               <strong style="color:var(--text-primary);">3. Recommended Schedule:</strong>
               <p style="margin:2px 0 0 0;">
-                - <strong>Active Workshop (Daily additions):</strong> Set to <em>Every 24 Hours</em> with <em>7-14 snapshots</em> retention.<br/>
-                - <strong>Occasional Weekend Tinkerer:</strong> Set to <em>Every 7 Days (Weekly)</em> with <em>5 snapshots</em> retention.<br/>
-                - <strong>Docker Host / Homelab:</strong> Mount the host volume <code>./data:/app/data</code> in your <code>docker-compose.yml</code> so snapshots in <code>data/backups/</code> are instantly protected by your host machine's daily backup tools (e.g. Restic, Borg, or Synology Hyper Backup).
+                - <strong>Active Workshop:</strong> Enable <em>Workshop Activity Backup</em> (e.g. every 10 modifications) + <em>Daily 02:00 AM</em> backup with <em>7-14 snapshots</em> retention.<br/>
+                - <strong>Occasional Tinkerer:</strong> Set to <em>Every 7 Days (Weekly)</em> with <em>5 snapshots</em> retention.<br/>
+                - <strong>Docker Host / Homelab:</strong> Mount the host volume <code>./data:/app/data</code> so snapshots in <code>data/backups/</code> are persistent.
+              </p>
+            </div>
+            <div>
+              <strong style="color:var(--text-primary);">4. Offsite NAS & Server Protection (FTP / SFTP / SMB):</strong>
+              <p style="margin:2px 0 0 0;">
+                Set up Remote Storage targeting your Synology / TrueNAS SMB share, SFTP server, or FTP host. Every snapshot is automatically pushed to the remote server, and snapshots older than your retention limit are automatically deleted both locally and from the remote server.
               </p>
             </div>
           </div>
@@ -1218,6 +1382,183 @@ export async function renderSettings(container, { refreshView }) {
     backupAutoDownloadToggle.addEventListener('change', async (e) => {
       await saveBackupSettings({ autoDownload: e.target.checked });
       showToast(e.target.checked ? 'Auto-download to PC enabled' : 'Auto-download to PC disabled', 'info');
+    });
+  }
+
+  // Backup Preferred Time
+  const backupTimeInput = document.getElementById('backup-time-input');
+  if (backupTimeInput) {
+    backupTimeInput.addEventListener('change', async (e) => {
+      const preferredTime = e.target.value || '02:00';
+      await saveBackupSettings({ preferredTime });
+      showToast(`Preferred backup time set to ${preferredTime}`, 'success');
+    });
+  }
+
+  // Workshop Activity-Based Auto-Backup Handlers
+  const backupActivityToggle = document.getElementById('backup-activity-toggle');
+  if (backupActivityToggle) {
+    backupActivityToggle.addEventListener('change', async (e) => {
+      const activityBased = e.target.checked;
+      await saveBackupSettings({ activityBased });
+      showToast(activityBased ? '⚡ Workshop activity auto-backup enabled' : 'Activity auto-backup disabled', 'info');
+    });
+  }
+
+  const backupThresholdInput = document.getElementById('backup-threshold-input');
+  if (backupThresholdInput) {
+    backupThresholdInput.addEventListener('change', async (e) => {
+      const activityThreshold = Math.max(1, parseInt(e.target.value, 10) || 10);
+      await saveBackupSettings({ activityThreshold });
+      showToast(`Activity backup threshold set to ${activityThreshold} modifications`, 'success');
+    });
+  }
+
+  // Remote Server Offsite Storage Handlers (FTP / SFTP / SMB)
+  const remoteEnabledToggle = document.getElementById('remote-enabled-toggle');
+  const remoteProtocolSelect = document.getElementById('remote-protocol-select');
+  const remoteHostInput = document.getElementById('remote-host-input');
+  const remotePortInput = document.getElementById('remote-port-input');
+  const remoteUserInput = document.getElementById('remote-user-input');
+  const remotePasswordInput = document.getElementById('remote-password-input');
+  const remotePathInput = document.getElementById('remote-path-input');
+  const remoteDomainInput = document.getElementById('remote-domain-input');
+  const remoteSecureInput = document.getElementById('remote-secure-input');
+  const remoteDomainWrapper = document.getElementById('remote-domain-wrapper');
+  const remoteSecureWrapper = document.getElementById('remote-secure-wrapper');
+  const remoteStatusBadge = document.getElementById('remote-status-badge');
+  const remoteTestStatus = document.getElementById('remote-test-status');
+  const btnTestRemote = document.getElementById('btn-test-remote');
+  const btnSaveRemote = document.getElementById('btn-save-remote');
+
+  function updateRemoteProtocolUI() {
+    const proto = remoteProtocolSelect ? remoteProtocolSelect.value : 'none';
+    if (remoteDomainWrapper) remoteDomainWrapper.style.display = proto === 'smb' ? 'flex' : 'none';
+    if (remoteSecureWrapper) remoteSecureWrapper.style.display = proto === 'ftp' ? 'flex' : 'none';
+
+    // Auto-update port defaults
+    if (remotePortInput) {
+      const currentPort = parseInt(remotePortInput.value, 10);
+      if ([21, 22, 445].includes(currentPort) || !remotePortInput.value) {
+        if (proto === 'sftp') remotePortInput.value = 22;
+        else if (proto === 'smb') remotePortInput.value = 445;
+        else if (proto === 'ftp') remotePortInput.value = 21;
+      }
+    }
+
+    const pathLabel = document.getElementById('remote-path-label');
+    if (pathLabel) {
+      if (proto === 'smb') {
+        pathLabel.textContent = 'SMB Share & Folder (e.g. Backups\\SimVentory):';
+        if (remotePathInput && (!remotePathInput.value || remotePathInput.value.startsWith('/'))) {
+          remotePathInput.placeholder = 'Backups\\SimVentory';
+        }
+      } else {
+        pathLabel.textContent = 'Remote Directory Path (e.g. /backups/simventory):';
+        if (remotePathInput && (!remotePathInput.value || remotePathInput.value.includes('\\'))) {
+          remotePathInput.placeholder = '/backups/simventory';
+        }
+      }
+    }
+  }
+
+  if (remoteProtocolSelect) {
+    remoteProtocolSelect.addEventListener('change', updateRemoteProtocolUI);
+  }
+
+  function getRemoteConfigFromInputs() {
+    return {
+      enabled: remoteEnabledToggle ? remoteEnabledToggle.checked : false,
+      protocol: remoteProtocolSelect ? remoteProtocolSelect.value : 'none',
+      host: remoteHostInput ? remoteHostInput.value.trim() : '',
+      port: remotePortInput ? parseInt(remotePortInput.value, 10) || 21 : 21,
+      username: remoteUserInput ? remoteUserInput.value.trim() : '',
+      password: remotePasswordInput ? remotePasswordInput.value : '',
+      remotePath: remotePathInput ? remotePathInput.value.trim() : '/backups/simventory',
+      domain: remoteDomainInput ? remoteDomainInput.value.trim() : 'WORKGROUP',
+      secure: remoteSecureInput ? remoteSecureInput.checked : false,
+    };
+  }
+
+  if (remoteEnabledToggle) {
+    remoteEnabledToggle.addEventListener('change', async (e) => {
+      const isRemoteOn = e.target.checked;
+      const remoteConfig = { ...(backupSettings.remote || {}), ...getRemoteConfigFromInputs(), enabled: isRemoteOn };
+      await saveBackupSettings({ remote: remoteConfig });
+      if (remoteStatusBadge) {
+        const proto = remoteConfig.protocol !== 'none' ? remoteConfig.protocol.toUpperCase() : 'REMOTE';
+        remoteStatusBadge.textContent = isRemoteOn && remoteConfig.protocol !== 'none' ? `● ${proto}` : '○ Inactive';
+        remoteStatusBadge.style.background = isRemoteOn && remoteConfig.protocol !== 'none' ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)';
+        remoteStatusBadge.style.color = isRemoteOn && remoteConfig.protocol !== 'none' ? '#10b981' : 'var(--text-tertiary)';
+        remoteStatusBadge.style.border = isRemoteOn && remoteConfig.protocol !== 'none' ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border-primary)';
+      }
+      showToast(isRemoteOn ? '🌐 Remote backup enabled' : 'Remote backup disabled', 'info');
+    });
+  }
+
+  if (btnTestRemote) {
+    btnTestRemote.addEventListener('click', async () => {
+      const remoteConfig = getRemoteConfigFromInputs();
+      if (!remoteConfig.protocol || remoteConfig.protocol === 'none') {
+        showToast('Please select a remote protocol (FTP, SFTP, or SMB)', 'warning');
+        return;
+      }
+      if (!remoteConfig.host) {
+        showToast('Please enter the server host / IP address', 'warning');
+        return;
+      }
+
+      btnTestRemote.disabled = true;
+      btnTestRemote.innerHTML = `
+        <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        Connecting...
+      `;
+      if (remoteTestStatus) {
+        remoteTestStatus.innerHTML = '<span style="color:var(--text-secondary);">Testing connection and write permissions...</span>';
+      }
+
+      try {
+        const result = await testRemoteBackup(remoteConfig);
+        showToast(result.message || '✓ Remote connection successful!', 'success');
+        if (remoteTestStatus) {
+          remoteTestStatus.innerHTML = `<span style="color:#10b981; font-weight:600;">✓ Connected successfully!</span> Write permission verified.`;
+        }
+      } catch (err) {
+        console.error('Remote connection test failed:', err);
+        showToast('Connection failed: ' + err.message, 'error');
+        if (remoteTestStatus) {
+          remoteTestStatus.innerHTML = `<span style="color:var(--accent-danger); font-weight:600;">✕ Connection failed:</span> ${escapeHtml(err.message)}`;
+        }
+      } finally {
+        btnTestRemote.disabled = false;
+        btnTestRemote.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+          Test Connection
+        `;
+      }
+    });
+  }
+
+  if (btnSaveRemote) {
+    btnSaveRemote.addEventListener('click', async () => {
+      const remoteConfig = { ...(backupSettings.remote || {}), ...getRemoteConfigFromInputs() };
+      btnSaveRemote.disabled = true;
+      try {
+        await saveBackupSettings({ remote: remoteConfig });
+        showToast('✓ Remote storage settings saved!', 'success');
+        if (remoteStatusBadge) {
+          const isRemoteOn = remoteConfig.enabled && remoteConfig.protocol !== 'none';
+          const proto = remoteConfig.protocol.toUpperCase();
+          remoteStatusBadge.textContent = isRemoteOn ? `● ${proto}` : '○ Inactive';
+          remoteStatusBadge.style.background = isRemoteOn ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)';
+          remoteStatusBadge.style.color = isRemoteOn ? '#10b981' : 'var(--text-tertiary)';
+          remoteStatusBadge.style.border = isRemoteOn ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border-primary)';
+        }
+      } catch (err) {
+        showToast('Failed to save remote settings: ' + err.message, 'error');
+      } finally {
+        btnSaveRemote.disabled = false;
+      }
     });
   }
 

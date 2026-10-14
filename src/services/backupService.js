@@ -13,11 +13,30 @@ const BACKUPS_STORE_NAME = 'snapshots';
 
 export const DEFAULT_BACKUP_SETTINGS = {
   enabled: false,
-  intervalDays: 1,   // 1 = Daily, 3 = Every 3 days, 7 = Weekly, 30 = Monthly
-  maxBackups: 7,     // Number of snapshots to retain
-  autoDownload: false, // In browser mode: prompt file download when periodic backup fires
+  intervalDays: 1,      // 1 = Daily, 3 = Every 3 days, 7 = Weekly, 30 = Monthly
+  preferredTime: '02:00', // HH:MM in 24h format (user-decided scheduled time)
+  activityBased: true,  // Automatically backup when workshop modifications occur
+  activityThreshold: 10, // Number of workshop changes between automatic backups
+  maxBackups: 7,        // Retention limit: keep last N snapshots (prunes older ones)
+  autoDownload: false,  // In browser mode: prompt file download when periodic backup fires
   lastBackupAt: null,
   lastBackupFile: null,
+  activityCounter: 0,
+  remote: {
+    enabled: false,
+    protocol: 'none',   // 'ftp' | 'sftp' | 'smb' | 'none'
+    host: '',
+    port: 21,
+    username: '',
+    password: '',
+    remotePath: '/backups/simventory',
+    domain: 'WORKGROUP',
+    secure: false,      // for FTPS
+    privateKey: '',     // for SFTP
+    lastUploadAt: null,
+    lastStatus: null,
+    lastError: null,
+  },
 };
 
 let backupsDbInstance = null;
@@ -338,6 +357,25 @@ function downloadBlob(blob, filename) {
 }
 
 /**
+ * Test remote storage connection (FTP, SFTP, SMB) via the backend server.
+ */
+export async function testRemoteBackup(remoteConfig) {
+  if (await isServerAvailable()) {
+    const res = await fetch('/api/backups/test-remote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(remoteConfig),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Remote connection failed');
+    }
+    return data;
+  }
+  throw new Error('Remote storage requires the SimVentory backend server to connect to FTP/SFTP/SMB.');
+}
+
+/**
  * Initialize background scheduler in the browser.
  * Checks on app startup if a periodic backup is due and runs it without interrupting the user.
  */
@@ -357,6 +395,19 @@ export async function initBackupScheduler() {
       const lastBackupTime = settings.lastBackupAt ? new Date(settings.lastBackupAt).getTime() : 0;
       const now = Date.now();
 
+      // Check preferred time of day if set (e.g., '02:00')
+      if (settings.preferredTime) {
+        const [targetHour, targetMin] = settings.preferredTime.split(':').map(Number);
+        const currentDate = new Date();
+        const currentHour = currentDate.getHours();
+        const currentMin = currentDate.getMinutes();
+        const isTimeMatch = (currentHour === targetHour && Math.abs(currentMin - targetMin) <= 15);
+        const isOverdue = (now - lastBackupTime >= intervalMs + 24 * 60 * 60 * 1000);
+        if (!isTimeMatch && !isOverdue && lastBackupTime > 0) {
+          return;
+        }
+      }
+
       if (now - lastBackupTime >= intervalMs) {
         console.log(`[BackupScheduler] Scheduled backup interval reached (${intervalDays}d). Running backup...`);
         const result = await triggerBackupNow('periodic');
@@ -370,6 +421,7 @@ export async function initBackupScheduler() {
   // Check 4 seconds after page load
   setTimeout(checkAndRun, 4000);
 
-  // Check every 30 minutes while tab remains open
-  setInterval(checkAndRun, 30 * 60 * 1000);
+  // Check every 15 minutes while tab remains open
+  setInterval(checkAndRun, 15 * 60 * 1000);
 }
+
