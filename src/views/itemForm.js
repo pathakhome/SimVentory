@@ -549,10 +549,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           }
           if (applied.notes !== undefined) {
             const el = document.getElementById('item-notes');
-            if (el) {
-              const cur = el.value.trim();
-              el.value = cur ? `${cur}\n\n${applied.notes}` : applied.notes;
-            }
+            if (el) el.value = applied.notes;
           }
           if (Array.isArray(applied.tags)) {
             // Replace previous tags with newly generated AI tags

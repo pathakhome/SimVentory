@@ -311,6 +311,7 @@ export async function retryQueueItem(id, newHint = null) {
     activeProcessingIds.delete(id);
     item.status = 'queued';
     item.error = null;
+    item.userEdited = {}; // Clear flags so new AI search cleanly replaces all fields
     if (newHint !== null) {
       item.hint = newHint;
     }
