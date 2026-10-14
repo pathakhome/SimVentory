@@ -117,16 +117,16 @@ DIMENSIONS IN DESCRIPTION:
 ROBU.IN "WH/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
 - Robu.in uses a standard white barcode label on its sealed bags:
   1. Top: 1D linear barcode.
-  2. Center: Prominent bold 4 to 7 digit numeric SKU code (e.g., '44258', '1219056', '270708').
-  3. Bottom: Warehouse inward tracking line containing "WH/IN/..." (e.g. 'WH/IN/58718') or "WH/OUT/...".
+  2. Center: Prominent bold 4 to 7 digit numeric SKU code (e.g., printed numbers like 29793, 31100, 58718).
+  3. Bottom: Warehouse inward tracking line containing "WH/IN/..." or "WH/OUT/...".
 - When you see a label with "WH/IN" or "WH/IN/...":
   - SUPPLIER: Set "supplierInfo": "Robu.in".
-  - SKU / PART NUMBER: Extract ONLY the bold numeric SKU printed directly above the WH/IN line (e.g., '44258') into "partNumber". Do NOT put 'WH/IN/58718' in "partNumber".
+  - SKU / PART NUMBER: Extract ONLY the actual bold numeric SKU printed on the label in the image into "partNumber". NEVER use an example number; read the actual digits present on the user's label. Do NOT put 'WH/IN/...' in "partNumber".
   - CONDITION: Set "condition": "Packed" (since it is sealed in the manufacturer/distributor bag).
-  - SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in "<SKU>"' (e.g. 'site:robu.in "44258"') or 'robu.in SKU <SKU>' to retrieve:
-    * The exact official component name (e.g. 'Infrared IR Receiver Module for Arduino').
-    * Operating voltage, pinout functions (e.g. VCC, GND, OUT/DAT), carrier frequency, and physical dimensions.
-    * The exact product URL on robu.in for "datasheetUrl": 'https://robu.in/?s=<SKU>' (e.g. 'https://robu.in/?s=44258').
+  - SEARCH GROUNDING: If Google Search Grounding is available, search 'site:robu.in "<SKU>"' using the exact detected SKU digits to retrieve:
+    * The official component catalog title.
+    * Operating voltage, pinout functions, and physical dimensions.
+    * The exact product URL on robu.in for "datasheetUrl": 'https://robu.in/?s=<SKU>'.
 - If the label also shows "QTY: <number>", populate "estimatedQuantity" with that number (default to 1 if not specified).
 
 HUBTRONICS.IN "RTB/IN" BARCODE LABEL SIGNATURE & SEARCH GROUNDING:
@@ -495,9 +495,9 @@ async function executeVisionRequest(config, base64Full, categories = [], hint = 
 
   if (!baseInstructions.toLowerCase().includes('wh/in')) {
     baseInstructions += `\n\nROBU.IN "WH/IN" BARCODE LABEL SIGNATURE:
-If the label shows a barcode, a bold 4 to 7 digit number (e.g. 44258), and a line with "WH/IN/..." (e.g. WH/IN/58718):
+If the label shows a barcode, a bold 4 to 7 digit numeric SKU, and a line with "WH/IN/...":
 1. SUPPLIER: Set "supplierInfo": "Robu.in".
-2. SKU: Extract the bold number directly above WH/IN (e.g. "44258") as "partNumber".
+2. SKU: Extract ONLY the actual bold digits printed directly above WH/IN as "partNumber". Read strictly from the image.
 3. SEARCH GROUNDING: Use Google Search Grounding to search 'site:robu.in <SKU>' to find the exact official component title, specs, pinouts, and dimensions.
 4. CONDITION: Set "condition": "Packed".
 5. DATASHEET: Set "datasheetUrl" to "https://robu.in/?s=<SKU>".`;
