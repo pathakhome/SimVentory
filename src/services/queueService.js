@@ -418,48 +418,6 @@ export async function approveAllReady(globalLocation = null) {
 }
 
 /**
- * Duplicate a queued item with all AI data and cloned image.
- * @param {string} id - ID of the queue item to clone
- * @param {Object} overrides - Optional fields to override on clone
- * @returns {Promise<Object>} The cloned queue item
- */
-export async function duplicateQueueItem(id, overrides = {}) {
-  ensureLoaded();
-  const index = queue.findIndex(i => i.id === id);
-  if (index === -1) throw new Error('Queue item not found to duplicate');
-
-  const source = queue[index];
-  const newId = generateId();
-
-  // Clone image blob in IndexedDB if available
-  try {
-    const imgBlob = await getImage(id);
-    if (imgBlob) {
-      await saveImage(newId, imgBlob);
-    }
-  } catch (err) {
-    console.warn('[QueueService] Failed to duplicate item image:', err);
-  }
-
-  // Deep clone data
-  const clone = {
-    ...JSON.parse(JSON.stringify(source)),
-    id: newId,
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-
-  if (source.userEdited) {
-    clone.userEdited = { ...source.userEdited };
-  }
-
-  // Insert immediately after the source card
-  queue.splice(index + 1, 0, clone);
-  persistQueue();
-  return clone;
-}
-
-/**
  * Discard / delete a single item from the queue.
  */
 export function discardQueueItem(id) {
