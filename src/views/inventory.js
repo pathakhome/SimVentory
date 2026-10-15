@@ -1,4 +1,4 @@
-import { getAllItems, getImage, saveItem, addHistory, getCategories, getLocations, saveLocation } from '../db.js';
+import { getAllItems, getImage, saveItem, addHistory, getCategories, getLocations, saveLocation, isServerAvailable } from '../db.js';
 import { getCategoryColor, getCategoryIcon, getConditionMeta, ITEM_CONDITIONS, getLocationColor } from '../categories.js';
 import { showToast } from '../toast.js';
 
@@ -283,13 +283,19 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   const conditionSelect = document.getElementById('inventory-condition-filter');
   const itemsContainer = document.getElementById('items-container');
 
-  // Pre-load all images
-  cachedImageURLs = {};
-  for (const item of items) {
-    const blob = await getImage(item.id);
-    if (blob) {
-      cachedImageURLs[item.id] = URL.createObjectURL(blob);
-    }
+  const isServer = await isServerAvailable();
+  window.__simventoryMissingImages = window.__simventoryMissingImages || new Set();
+
+  const CHUNK_SIZE = 40;
+  let renderedCount = CHUNK_SIZE;
+  let scrollObserver = null;
+
+  function debounce(fn, delayMs = 150) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delayMs);
+    };
   }
 
   function getFilteredItems() {
@@ -345,10 +351,19 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   }
 
   function renderItems() {
+    renderedCount = CHUNK_SIZE;
+    renderCurrentSlice(false);
+  }
+
+  function renderCurrentSlice(isAppend = false) {
     const filtered = getFilteredItems();
     const mode = localStorage.getItem('cv_viewMode') || 'grid';
 
     if (filtered.length === 0) {
+      if (scrollObserver) {
+        scrollObserver.disconnect();
+        scrollObserver = null;
+      }
       itemsContainer.innerHTML = `
         <div class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -363,35 +378,133 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       return;
     }
 
-    if (mode === 'grid') {
-      itemsContainer.innerHTML = `<div class="items-grid">${filtered.map(item => renderGridCard(item)).join('')}</div>`;
-    } else {
-      const isAllChecked = filtered.length > 0 && filtered.every(i => selectedItemIds.has(i.id));
-      itemsContainer.innerHTML = `
-        <div class="items-list">
-          <div class="item-list-row header">
-            <span><input type="checkbox" id="select-all-header-checkbox" ${isAllChecked ? 'checked' : ''} title="Select all filtered items" style="width:18px; height:18px; cursor:pointer;" /></span>
-            <span></span>
-            <span>Name</span>
-            <span>Category</span>
-            <span>Condition</span>
-            <span>Location</span>
-            <span>Qty</span>
-            <span>Fav</span>
-            <span>Actions</span>
+    const currentItems = filtered.slice(0, renderedCount);
+    const hasMore = renderedCount < filtered.length;
+
+    if (!isAppend) {
+      if (mode === 'grid') {
+        itemsContainer.innerHTML = `
+          <div class="items-grid" id="inventory-items-grid">${currentItems.map(item => renderGridCard(item)).join('')}</div>
+          ${renderScrollFooter(currentItems.length, filtered.length, hasMore)}
+        `;
+      } else {
+        const isAllChecked = filtered.length > 0 && filtered.every(i => selectedItemIds.has(i.id));
+        itemsContainer.innerHTML = `
+          <div class="items-list" id="inventory-items-list">
+            <div class="item-list-row header">
+              <span><input type="checkbox" id="select-all-header-checkbox" ${isAllChecked ? 'checked' : ''} title="Select all filtered items" style="width:18px; height:18px; cursor:pointer;" /></span>
+              <span></span>
+              <span>Name</span>
+              <span>Category</span>
+              <span>Condition</span>
+              <span>Location</span>
+              <span>Qty</span>
+              <span>Fav</span>
+              <span>Actions</span>
+            </div>
+            <div id="inventory-list-rows" style="display: flex; flex-direction: column; gap: var(--space-sm);">${currentItems.map(item => renderListRow(item)).join('')}</div>
           </div>
-          ${filtered.map(item => renderListRow(item)).join('')}
-        </div>
-      `;
+          ${renderScrollFooter(currentItems.length, filtered.length, hasMore)}
+        `;
+      }
+    } else {
+      const startIdx = renderedCount - CHUNK_SIZE;
+      const newItems = filtered.slice(startIdx, renderedCount);
+      const newCardsHtml = mode === 'grid'
+        ? newItems.map(item => renderGridCard(item)).join('')
+        : newItems.map(item => renderListRow(item)).join('');
+
+      const targetContainer = mode === 'grid'
+        ? document.getElementById('inventory-items-grid')
+        : document.getElementById('inventory-list-rows');
+
+      if (targetContainer) {
+        targetContainer.insertAdjacentHTML('beforeend', newCardsHtml);
+      }
+
+      const footerEl = document.getElementById('inventory-scroll-footer');
+      if (footerEl) {
+        footerEl.outerHTML = renderScrollFooter(Math.min(renderedCount, filtered.length), filtered.length, hasMore);
+      }
     }
 
-    // Attach event listeners
-    attachItemListeners();
+    setupScrollObserver(hasMore);
     updateBatchBar();
+    loadVisibleOfflineImages(itemsContainer);
+  }
+
+  function renderScrollFooter(shown, total, hasMore) {
+    return `
+      <div class="inventory-scroll-footer" id="inventory-scroll-footer" style="padding: 24px 0 32px 0; text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div>Showing <strong style="color: var(--text-primary); font-weight: 600;">${shown}</strong> of <strong style="color: var(--text-primary); font-weight: 600;">${total}</strong> components</div>
+        ${hasMore ? `
+          <div id="inventory-scroll-sentinel" style="height: 10px; width: 100%;"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-inventory-load-all" style="margin-top: 6px; font-size: 12px; padding: 4px 14px; border-radius: 99px;">
+            Load All Remaining (${total - shown})
+          </button>
+        ` : `
+          <div style="font-size: 12px; color: var(--text-tertiary); opacity: 0.7;">✓ All components displayed</div>
+        `}
+      </div>
+    `;
+  }
+
+  function setupScrollObserver(hasMore) {
+    if (scrollObserver) {
+      scrollObserver.disconnect();
+      scrollObserver = null;
+    }
+    if (!hasMore) return;
+
+    const sentinel = document.getElementById('inventory-scroll-sentinel');
+    if (!sentinel) return;
+
+    scrollObserver = new IntersectionObserver((entries) => {
+      if (entries[0] && entries[0].isIntersecting) {
+        const filtered = getFilteredItems();
+        if (renderedCount < filtered.length) {
+          renderedCount += CHUNK_SIZE;
+          renderCurrentSlice(true);
+        }
+      }
+    }, { rootMargin: '300px' });
+
+    scrollObserver.observe(sentinel);
+  }
+
+  function loadAllRemaining() {
+    const filtered = getFilteredItems();
+    renderedCount = filtered.length;
+    renderCurrentSlice(false);
+  }
+
+  function loadVisibleOfflineImages(parentEl) {
+    if (isServer) return;
+    const cards = parentEl.querySelectorAll('[data-item-id]');
+    cards.forEach(card => {
+      const id = card.dataset.itemId;
+      if (cachedImageURLs[id]) return;
+      getImage(id).then(blob => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          cachedImageURLs[id] = url;
+          const img = card.querySelector('.item-card-image img, .item-list-img-wrapper img, .item-list-img');
+          if (img && img.tagName === 'IMG') {
+            img.src = url;
+            img.style.display = 'block';
+            const placeholder = card.querySelector('.placeholder-icon, .item-list-img-wrapper svg, .item-list-img svg');
+            if (placeholder && placeholder.parentElement) {
+              placeholder.parentElement.style.display = 'none';
+            }
+          }
+        }
+      });
+    });
   }
 
   function renderGridCard(item) {
-    const imgSrc = cachedImageURLs[item.id] || '';
+    const isKnownMissing = window.__simventoryMissingImages.has(item.id);
+    const imgSrc = !isKnownMissing ? (cachedImageURLs[item.id] || (isServer ? `/api/items/${item.id}/image` : '')) : '';
     const catColor = getCategoryColor(item.category, categories);
     const condMeta = getConditionMeta(item.condition);
     const locColor = getLocationColor(item.location, locations);
@@ -402,7 +515,10 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       <div class="item-card ${isSelected ? 'is-selected' : ''}" data-item-id="${item.id}">
         <div class="item-card-image">
           <input type="checkbox" class="item-select-checkbox" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item" />
-          ${imgSrc ? `<img src="${imgSrc}" alt="${escapeHtml(item.name)}" loading="lazy"/>` : `
+          ${imgSrc ? `
+            <img src="${imgSrc}" alt="${escapeHtml(item.name)}" loading="lazy" onerror="window.__simventoryMissingImages.add('${item.id}'); this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';"/>
+            <svg class="placeholder-icon" style="display:none;" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          ` : `
             <svg class="placeholder-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           `}
           <button class="item-card-duplicate" data-dup-id="${item.id}" title="Duplicate this component (different condition / location)">
@@ -449,7 +565,8 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   }
 
   function renderListRow(item) {
-    const imgSrc = cachedImageURLs[item.id] || '';
+    const isKnownMissing = window.__simventoryMissingImages.has(item.id);
+    const imgSrc = !isKnownMissing ? (cachedImageURLs[item.id] || (isServer ? `/api/items/${item.id}/image` : '')) : '';
     const catColor = getCategoryColor(item.category, categories);
     const condMeta = getConditionMeta(item.condition);
     const locColor = getLocationColor(item.location, locations);
@@ -459,7 +576,12 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     return `
       <div class="item-list-row ${isSelected ? 'is-selected' : ''}" data-item-id="${item.id}">
         <input type="checkbox" class="item-select-checkbox-list" data-select-id="${item.id}" ${isSelected ? 'checked' : ''} title="Select item" style="width:18px; height:18px; cursor:pointer;" />
-        ${imgSrc ? `<img class="item-list-img" src="${imgSrc}" alt="${escapeHtml(item.name)}"/>` : `<div class="item-list-img" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>`}
+        ${imgSrc ? `
+          <div class="item-list-img-wrapper" style="width:36px; height:36px; position:relative; flex-shrink:0;">
+            <img class="item-list-img" src="${imgSrc}" alt="${escapeHtml(item.name)}" loading="lazy" onerror="window.__simventoryMissingImages.add('${item.id}'); this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width:100%; height:100%; object-fit:cover; border-radius:4px;"/>
+            <div class="item-list-img" style="display:none;align-items:center;justify-content:center; width:100%; height:100%;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
+          </div>
+        ` : `<div class="item-list-img" style="display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>`}
         <span class="item-list-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
         <select class="card-inline-select card-inline-cat" data-item-id="${item.id}" title="Quick edit category" style="background: ${catColor}18; color: ${catColor}; border-color: ${catColor}55;">
           ${categories.map(c => `<option value="${escapeHtml(c.name)}" ${item.category === c.name ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>`).join('')}
@@ -506,7 +628,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       selectAllBtn.textContent = isAll ? 'Deselect All' : 'Select All Filtered';
     }
 
-    // Update row/card styles and checkboxes
+    // Update row/card styles and checkboxes for rendered elements
     container.querySelectorAll('.item-card, .item-list-row:not(.header)').forEach(el => {
       const id = el.dataset.itemId;
       const isSelected = selectedItemIds.has(id);
@@ -522,157 +644,191 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     }
   }
 
-  function attachItemListeners() {
-    // Card/row click → open detail (ignore clicks on checkboxes and buttons)
-    container.querySelectorAll('.item-card, .item-list-row:not(.header)').forEach(el => {
-      el.addEventListener('click', (e) => {
-        if (
-          e.target.closest('.qty-btn') ||
-          e.target.closest('.item-card-favorite') ||
-          e.target.closest('.item-list-fav') ||
-          e.target.closest('.item-card-duplicate') ||
-          e.target.closest('.item-list-dup') ||
-          e.target.closest('.item-select-checkbox') ||
-          e.target.closest('.item-select-checkbox-list') ||
-          e.target.closest('.card-inline-select')
-        ) return;
-        openItemModal(el.dataset.itemId);
-      });
-    });
-
-    // Checkboxes click
-    container.querySelectorAll('.item-select-checkbox, .item-select-checkbox-list').forEach(chk => {
-      chk.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = chk.dataset.selectId;
-        if (chk.checked) {
-          selectedItemIds.add(id);
+  function updateItemQtyInDOM(id, newQty, threshold) {
+    const elements = itemsContainer.querySelectorAll(`[data-item-id="${id}"]`);
+    elements.forEach(el => {
+      const qtyValEl = el.querySelector('.item-qty-value, .item-list-qty');
+      if (qtyValEl) {
+        qtyValEl.textContent = newQty;
+        const qtyClass = newQty === 0 ? 'out' : (newQty <= threshold ? 'low' : '');
+        if (el.classList.contains('item-list-row')) {
+          qtyValEl.className = `item-list-qty item-qty-value ${qtyClass}`.trim();
         } else {
-          selectedItemIds.delete(id);
+          qtyValEl.className = `item-qty-value ${qtyClass}`.trim();
         }
-        updateBatchBar();
-      });
-    });
-
-    // Header Select All Checkbox
-    const selectAllHeader = container.querySelector('#select-all-header-checkbox');
-    if (selectAllHeader) {
-      selectAllHeader.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const filtered = getFilteredItems();
-        if (selectAllHeader.checked) {
-          filtered.forEach(i => selectedItemIds.add(i.id));
-        } else {
-          filtered.forEach(i => selectedItemIds.delete(i.id));
-        }
-        updateBatchBar();
-      });
-    }
-
-    // Inline quick edit: Category
-    container.querySelectorAll('.card-inline-cat').forEach(sel => {
-      sel.addEventListener('click', (e) => e.stopPropagation());
-      sel.addEventListener('change', async (e) => {
-        e.stopPropagation();
-        const id = sel.dataset.itemId;
-        const item = items.find(i => i.id === id);
-        if (!item) return;
-        const oldVal = item.category;
-        const newVal = sel.value;
-        if (oldVal === newVal) return;
-        item.category = newVal;
-        item.updatedAt = new Date().toISOString();
-        await saveItem(item);
-        await addHistory(id, 'category_changed', `Category updated from "${oldVal}" to "${newVal}"`);
-        showToast(`Category updated to "${newVal}"`, 'success');
-        renderItems();
-      });
-    });
-
-    // Inline quick edit: Condition
-    container.querySelectorAll('.card-inline-cond').forEach(sel => {
-      sel.addEventListener('click', (e) => e.stopPropagation());
-      sel.addEventListener('change', async (e) => {
-        e.stopPropagation();
-        const id = sel.dataset.itemId;
-        const item = items.find(i => i.id === id);
-        if (!item) return;
-        const oldVal = item.condition || 'Unpacked New';
-        const newVal = sel.value;
-        if (oldVal === newVal) return;
-        item.condition = newVal;
-        item.updatedAt = new Date().toISOString();
-        await saveItem(item);
-        await addHistory(id, 'condition_changed', `Condition updated to "${newVal}"`);
-        showToast(`Condition updated to "${newVal}"`, 'success');
-        renderItems();
-      });
-    });
-
-    // Inline quick edit: Location
-    container.querySelectorAll('.card-inline-loc').forEach(sel => {
-      sel.addEventListener('click', (e) => e.stopPropagation());
-      sel.addEventListener('change', async (e) => {
-        e.stopPropagation();
-        const id = sel.dataset.itemId;
-        const item = items.find(i => i.id === id);
-        if (!item) return;
-        const oldVal = item.location || 'None';
-        const newVal = sel.value;
-        if (oldVal === newVal) return;
-        item.location = newVal;
-        item.updatedAt = new Date().toISOString();
-        await saveItem(item);
-        await addHistory(id, 'moved', `Moved from "${oldVal}" to "${newVal}"`);
-        showToast(`Moved to "${newVal}"`, 'success');
-        renderItems();
-      });
-    });
-
-    // Quantity buttons
-    container.querySelectorAll('.qty-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.qtyId;
-        const action = btn.dataset.qtyAction;
-        const item = items.find(i => i.id === id);
-        if (!item) return;
-
-        if (action === 'decrease' && item.quantity <= 0) return;
-
-        item.quantity = action === 'increase' ? item.quantity + 1 : item.quantity - 1;
-        item.updatedAt = new Date().toISOString();
-        await saveItem(item);
-        await addHistory(id, action === 'increase' ? 'restocked' : 'used', action === 'increase' ? 1 : -1);
-        renderItems();
-      });
-    });
-
-    // Favorite toggle
-    container.querySelectorAll('[data-fav-id]').forEach(el => {
-      el.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const id = el.dataset.favId;
-        const item = items.find(i => i.id === id);
-        if (!item) return;
-        item.isFavorite = !item.isFavorite;
-        item.updatedAt = new Date().toISOString();
-        await saveItem(item);
-        renderItems();
-      });
-    });
-
-    // Duplicate component click
-    container.querySelectorAll('[data-dup-id]').forEach(el => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = el.dataset.dupId;
-        if (id && navigateTo) {
-          navigateTo('add-item', { cloneItemId: id });
-        }
-      });
+      }
     });
   }
+
+  function updateItemFavInDOM(id, isFav) {
+    const elements = itemsContainer.querySelectorAll(`[data-item-id="${id}"]`);
+    elements.forEach(el => {
+      const favBtn = el.querySelector('.item-card-favorite, .item-list-fav');
+      if (favBtn) {
+        favBtn.classList.toggle('active', isFav);
+        const svg = favBtn.querySelector('svg');
+        if (svg) svg.setAttribute('fill', isFav ? 'currentColor' : 'none');
+      }
+    });
+  }
+
+  // Delegated event listener for clicks inside itemsContainer
+  itemsContainer.addEventListener('click', async (e) => {
+    // 1. Quantity button
+    const qtyBtn = e.target.closest('.qty-btn');
+    if (qtyBtn) {
+      e.stopPropagation();
+      const id = qtyBtn.dataset.qtyId;
+      const action = qtyBtn.dataset.qtyAction;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      if (action === 'decrease' && item.quantity <= 0) return;
+      item.quantity = action === 'increase' ? item.quantity + 1 : item.quantity - 1;
+      item.updatedAt = new Date().toISOString();
+      await saveItem(item);
+      await addHistory(id, action === 'increase' ? 'restocked' : 'used', action === 'increase' ? 1 : -1);
+      updateItemQtyInDOM(id, item.quantity, item.lowStockThreshold);
+      return;
+    }
+
+    // 2. Favorite toggle
+    const favBtn = e.target.closest('[data-fav-id]');
+    if (favBtn) {
+      e.stopPropagation();
+      const id = favBtn.dataset.favId;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      item.isFavorite = !item.isFavorite;
+      item.updatedAt = new Date().toISOString();
+      await saveItem(item);
+      updateItemFavInDOM(id, item.isFavorite);
+      return;
+    }
+
+    // 3. Duplicate button
+    const dupBtn = e.target.closest('[data-dup-id]');
+    if (dupBtn) {
+      e.stopPropagation();
+      const id = dupBtn.dataset.dupId;
+      if (id && navigateTo) {
+        navigateTo('add-item', { cloneItemId: id });
+      }
+      return;
+    }
+
+    // 4. Select item checkbox
+    const chk = e.target.closest('.item-select-checkbox, .item-select-checkbox-list');
+    if (chk) {
+      e.stopPropagation();
+      const id = chk.dataset.selectId;
+      if (chk.checked) {
+        selectedItemIds.add(id);
+      } else {
+        selectedItemIds.delete(id);
+      }
+      updateBatchBar();
+      return;
+    }
+
+    // 5. Select all header checkbox (list view)
+    const selectAllHdr = e.target.closest('#select-all-header-checkbox');
+    if (selectAllHdr) {
+      e.stopPropagation();
+      const filtered = getFilteredItems();
+      if (selectAllHdr.checked) {
+        filtered.forEach(i => selectedItemIds.add(i.id));
+      } else {
+        filtered.forEach(i => selectedItemIds.delete(i.id));
+      }
+      updateBatchBar();
+      return;
+    }
+
+    // 6. Stop propagation for inline dropdowns
+    if (e.target.closest('.card-inline-select')) {
+      e.stopPropagation();
+      return;
+    }
+
+    // 7. Load all remaining button
+    if (e.target.closest('#btn-inventory-load-all')) {
+      e.stopPropagation();
+      loadAllRemaining();
+      return;
+    }
+
+    // 8. Card or Row click -> Open item detail modal
+    const cardOrRow = e.target.closest('.item-card, .item-list-row:not(.header)');
+    if (cardOrRow && cardOrRow.dataset.itemId) {
+      openItemModal(cardOrRow.dataset.itemId);
+    }
+  });
+
+  // Delegated change listener on itemsContainer for inline selects
+  itemsContainer.addEventListener('change', async (e) => {
+    const catSelect = e.target.closest('.card-inline-cat');
+    if (catSelect) {
+      e.stopPropagation();
+      const id = catSelect.dataset.itemId;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      const oldVal = item.category;
+      const newVal = catSelect.value;
+      if (oldVal === newVal) return;
+      item.category = newVal;
+      item.updatedAt = new Date().toISOString();
+      await saveItem(item);
+      await addHistory(id, 'category_changed', `Category updated from "${oldVal}" to "${newVal}"`);
+      showToast(`Category updated to "${newVal}"`, 'success');
+      const catColor = getCategoryColor(newVal, categories);
+      catSelect.style.background = `${catColor}18`;
+      catSelect.style.color = catColor;
+      catSelect.style.borderColor = `${catColor}55`;
+      return;
+    }
+
+    const condSelect = e.target.closest('.card-inline-cond');
+    if (condSelect) {
+      e.stopPropagation();
+      const id = condSelect.dataset.itemId;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      const oldVal = item.condition || 'Unpacked New';
+      const newVal = condSelect.value;
+      if (oldVal === newVal) return;
+      item.condition = newVal;
+      item.updatedAt = new Date().toISOString();
+      await saveItem(item);
+      await addHistory(id, 'condition_changed', `Condition updated to "${newVal}"`);
+      showToast(`Condition updated to "${newVal}"`, 'success');
+      const cm = getConditionMeta(newVal);
+      condSelect.style.background = cm.bg;
+      condSelect.style.color = cm.color;
+      condSelect.style.borderColor = `${cm.color}55`;
+      return;
+    }
+
+    const locSelect = e.target.closest('.card-inline-loc');
+    if (locSelect) {
+      e.stopPropagation();
+      const id = locSelect.dataset.itemId;
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      const oldVal = item.location || 'None';
+      const newVal = locSelect.value;
+      if (oldVal === newVal) return;
+      item.location = newVal;
+      item.updatedAt = new Date().toISOString();
+      await saveItem(item);
+      await addHistory(id, 'moved', `Moved from "${oldVal}" to "${newVal}"`);
+      showToast(`Moved to "${newVal}"`, 'success');
+      const locColor = getLocationColor(newVal, locations);
+      locSelect.style.background = `${locColor}18`;
+      locSelect.style.color = locColor;
+      locSelect.style.borderColor = `${locColor}55`;
+      return;
+    }
+  });
 
   // Batch actions bar buttons
   const btnBatchMove = document.getElementById('btn-batch-move');
@@ -1044,7 +1200,9 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
   }
 
   // Event listeners
-  searchInput.addEventListener('input', renderItems);
+  searchInput.addEventListener('input', debounce(() => {
+    renderItems();
+  }, 150));
   sortSelect.addEventListener('change', renderItems);
   locationSelect.addEventListener('change', renderItems);
   conditionSelect?.addEventListener('change', renderItems);
@@ -1075,6 +1233,13 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
 
   // Initial render
   renderItems();
+
+  return () => {
+    if (scrollObserver) {
+      scrollObserver.disconnect();
+      scrollObserver = null;
+    }
+  };
 }
 
 function escapeHtml(str) {

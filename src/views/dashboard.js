@@ -1,4 +1,4 @@
-import { getAllItems, getImage, getCategories } from '../db.js';
+import { getAllItems, getImage, getCategories, isServerAvailable } from '../db.js';
 import { getCategoryColor, getCategoryIcon } from '../categories.js';
 
 export async function renderDashboard(container, { navigateTo, openItemModal, openScanner, refreshView }) {
@@ -163,16 +163,35 @@ export async function renderDashboard(container, { navigateTo, openItemModal, op
     </div>
   `;
 
-  // Load recent item images
+  // Load recent item images (non-blocking parallel load)
   const recentContainer = document.getElementById('dashboard-recent');
-  for (const item of recentItems) {
-    const imgBlob = await getImage(item.id);
-    const imgSrc = imgBlob ? URL.createObjectURL(imgBlob) : '';
+  const isServer = await isServerAvailable();
+  window.__simventoryMissingImages = window.__simventoryMissingImages || new Set();
+
+  await Promise.all(recentItems.map(async (item) => {
+    let imgSrc = '';
+    const isKnownMissing = window.__simventoryMissingImages.has(item.id);
+    if (!isKnownMissing) {
+      if (isServer) {
+        imgSrc = `/api/items/${item.id}/image`;
+      } else {
+        const imgBlob = await getImage(item.id);
+        if (imgBlob) imgSrc = URL.createObjectURL(imgBlob);
+      }
+    }
+
     const el = document.createElement('div');
     el.className = 'recent-item';
     el.dataset.itemId = item.id;
     el.innerHTML = `
-      ${imgSrc ? `<img class="recent-item-img" src="${imgSrc}" alt="${item.name}"/>` : `<div class="recent-item-img" style="display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`}
+      ${imgSrc ? `
+        <div style="width:36px; height:36px; position:relative; flex-shrink:0;">
+          <img class="recent-item-img" src="${imgSrc}" alt="${item.name}" loading="lazy" onerror="window.__simventoryMissingImages.add('${item.id}'); this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width:100%; height:100%; object-fit:cover; border-radius:var(--border-radius-sm);"/>
+          <div class="recent-item-img" style="display:none;align-items:center;justify-content:center; width:100%; height:100%;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+        </div>
+      ` : `
+        <div class="recent-item-img" style="display:flex;align-items:center;justify-content:center; width:36px; height:36px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+      `}
       <div class="recent-item-info">
         <div class="recent-item-name">${item.name}</div>
         <div class="recent-item-meta">${item.category} · Qty: ${item.quantity}</div>
@@ -180,7 +199,7 @@ export async function renderDashboard(container, { navigateTo, openItemModal, op
     `;
     el.addEventListener('click', () => openItemModal(item.id));
     recentContainer.appendChild(el);
-  }
+  }));
 
   // Click handlers for low-stock items
   container.querySelectorAll('.low-stock-item[data-item-id]').forEach(el => {

@@ -34,18 +34,17 @@ export async function renderQueue(container, { navigateTo, refreshView }) {
     activeUnsubscribe = null;
   }
 
-  // Pre-load thumbnail Object URLs for images in queue
+  // Pre-load thumbnail Object URLs for images in queue (in parallel)
   async function syncThumbnails(items) {
-    for (const item of items) {
-      if (!cachedThumbnailURLs[item.id]) {
-        try {
-          const blob = await getImage(item.id);
-          if (blob) {
-            cachedThumbnailURLs[item.id] = URL.createObjectURL(blob);
-          }
-        } catch (_) {}
-      }
-    }
+    const missing = items.filter(item => !cachedThumbnailURLs[item.id]);
+    await Promise.all(missing.map(async (item) => {
+      try {
+        const blob = await getImage(item.id);
+        if (blob) {
+          cachedThumbnailURLs[item.id] = URL.createObjectURL(blob);
+        }
+      } catch (_) {}
+    }));
   }
 
   function getRobuLinkUrl(item) {
