@@ -118,6 +118,7 @@ export function createDefaultItem() {
     lowStockThreshold: 0,
     partNumber: '',
     location: '',
+    usedIn: '',
     datasheetUrl: '',
     supplierInfo: '',
     notes: '',

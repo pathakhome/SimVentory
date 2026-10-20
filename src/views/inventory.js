@@ -328,6 +328,7 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       filtered = filtered.filter(i =>
         i.name.toLowerCase().includes(query) ||
         (i.description || '').toLowerCase().includes(query) ||
+        (i.usedIn || '').toLowerCase().includes(query) ||
         (i.category || '').toLowerCase().includes(query) ||
         (i.partNumber || '').toLowerCase().includes(query) ||
         (i.location || '').toLowerCase().includes(query) ||
@@ -548,6 +549,10 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
               ${locations.map(loc => `<option value="${escapeHtml(loc.name)}" ${item.location === loc.name ? 'selected' : ''}>📍 ${escapeHtml(loc.name)}</option>`).join('')}
             </select>
           </div>
+          <div class="item-card-used-in">
+            <span class="item-card-used-in-label">Used In:</span>
+            <input type="text" class="card-inline-used-in" data-item-id="${item.id}" value="${escapeAttr(item.usedIn || '')}" placeholder="Add project or use..." title="Where this item is used" autocomplete="off" />
+          </div>
           <div class="item-card-desc">${escapeHtml(item.description || 'No description')}</div>
           <div class="item-card-footer">
             <div class="item-qty">
@@ -744,9 +749,16 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
       return;
     }
 
-    // 6. Stop propagation for inline dropdowns
-    if (e.target.closest('.card-inline-select')) {
+    // 6. Stop propagation for inline dropdowns and free-text inputs
+    if (e.target.closest('.card-inline-select, .item-card-used-in')) {
       e.stopPropagation();
+      const usedInBox = e.target.closest('.item-card-used-in');
+      if (usedInBox) {
+        const input = usedInBox.querySelector('.card-inline-used-in');
+        if (input && document.activeElement !== input) {
+          input.focus();
+        }
+      }
       return;
     }
 
@@ -764,8 +776,49 @@ export async function renderInventory(container, { navigateTo, openItemModal, re
     }
   });
 
-  // Delegated change listener on itemsContainer for inline selects
+  async function handleUsedInSave(inputEl) {
+    if (!inputEl) return;
+    const id = inputEl.dataset.itemId;
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    const oldVal = (item.usedIn || '').trim();
+    const newVal = inputEl.value.trim();
+    if (oldVal === newVal) return;
+    item.usedIn = newVal;
+    item.updatedAt = new Date().toISOString();
+    await saveItem(item);
+    showToast(newVal ? `Updated "Used In: ${newVal}"` : 'Cleared "Used In"', 'success');
+  }
+
+  // Keydown listener for inline inputs (Enter to submit/blur)
+  itemsContainer.addEventListener('keydown', (e) => {
+    const usedInInput = e.target.closest('.card-inline-used-in');
+    if (usedInInput) {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        usedInInput.blur();
+      }
+    }
+  });
+
+  // Focusout listener to auto-save on blur
+  itemsContainer.addEventListener('focusout', async (e) => {
+    const usedInInput = e.target.closest('.card-inline-used-in');
+    if (usedInInput) {
+      await handleUsedInSave(usedInInput);
+    }
+  });
+
+  // Delegated change listener on itemsContainer for inline selects & inputs
   itemsContainer.addEventListener('change', async (e) => {
+    const usedInInput = e.target.closest('.card-inline-used-in');
+    if (usedInInput) {
+      e.stopPropagation();
+      await handleUsedInSave(usedInInput);
+      return;
+    }
+
     const catSelect = e.target.closest('.card-inline-cat');
     if (catSelect) {
       e.stopPropagation();

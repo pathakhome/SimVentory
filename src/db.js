@@ -452,7 +452,7 @@ export async function importData(data) {
  */
 export async function exportCSV() {
   const items = await getAllItems();
-  const headers = ['Name', 'Category', 'Condition', 'Quantity', 'Low Stock Threshold', 'Part Number', 'Location', 'Description', 'Tags', 'Supplier Info', 'Datasheet URL', 'Favorite', 'Notes', 'Created At'];
+  const headers = ['Name', 'Category', 'Condition', 'Quantity', 'Low Stock Threshold', 'Part Number', 'Location', 'Used In', 'Description', 'Tags', 'Supplier Info', 'Datasheet URL', 'Favorite', 'Notes', 'Created At'];
   const rows = items.map(item => [
     item.name,
     item.category,
@@ -461,6 +461,7 @@ export async function exportCSV() {
     item.lowStockThreshold,
     item.partNumber || '',
     item.location || '',
+    item.usedIn || '',
     item.description || '',
     (item.tags || []).join('; '),
     item.supplierInfo || '',

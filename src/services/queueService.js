@@ -375,6 +375,7 @@ export async function approveQueueItem(id, overrides = {}) {
     condition: overrides.condition !== undefined ? overrides.condition : (item.condition || item.aiData?.condition || 'Unpacked New'),
     partNumber: overrides.partNumber !== undefined ? overrides.partNumber : (item.partNumber || item.aiData?.partNumber || ''),
     location,
+    usedIn: overrides.usedIn !== undefined ? overrides.usedIn : (item.usedIn || ''),
     quantity: overrides.quantity !== undefined ? overrides.quantity : (item.quantity !== undefined ? item.quantity : 1),
     lowStockThreshold: overrides.lowStockThreshold !== undefined ? overrides.lowStockThreshold : (item.lowStockThreshold || 0),
     description: overrides.description !== undefined ? overrides.description : (item.description || item.aiData?.description || ''),

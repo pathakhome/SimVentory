@@ -225,6 +225,12 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             <input type="text" id="item-supplier" placeholder="e.g., Amazon — ₹350" value="${escapeAttr(item.supplierInfo)}" />
           </div>
 
+          <!-- Used In -->
+          <div class="form-group">
+            <label class="form-label" for="item-used-in">Used In</label>
+            <input type="text" id="item-used-in" placeholder="e.g., Quadcopter Drone, 3D Printer..." value="${escapeAttr(item.usedIn || '')}" />
+          </div>
+
           <!-- Description -->
           <div class="form-group full-width">
             <label class="form-label" for="item-desc">Description</label>
@@ -905,6 +911,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       lowStockThreshold,
       partNumber: document.getElementById('item-partnum').value.trim(),
       location: locationVal,
+      usedIn: (document.getElementById('item-used-in')?.value || '').trim(),
       datasheetUrl: document.getElementById('item-datasheet').value.trim(),
       supplierInfo: document.getElementById('item-supplier').value.trim(),
       notes: document.getElementById('item-notes').value.trim(),

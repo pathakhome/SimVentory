@@ -87,6 +87,11 @@ export async function openItemDetailModal(itemId, { navigateTo, refreshView }) {
             <button type="button" class="btn btn-secondary btn-sm" id="modal-move-btn" style="padding: 2px 8px; font-size: 11px;" title="Move to another storage location">Move</button>
           </div>
         </div>
+        ${item.usedIn ? `
+        <div class="modal-detail-item">
+          <div class="modal-detail-label">Used In</div>
+          <div class="modal-detail-value">${escapeHtml(item.usedIn)}</div>
+        </div>` : ''}
         ${item.supplierInfo ? `
         <div class="modal-detail-item">
           <div class="modal-detail-label">Supplier</div>
