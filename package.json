@@ -18,6 +18,7 @@
     "basic-ftp": "^6.2.3",
     "express": "^5.3.0",
     "html5-qrcode": "^2.3.8",
+    "pdfjs-dist": "^5.6.205",
     "ssh2-sftp-client": "^12.1.1"
   }
 }

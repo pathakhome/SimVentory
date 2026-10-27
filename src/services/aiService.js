@@ -909,3 +909,327 @@ function matchCategory(detected, activeCategories = []) {
   const matched = activeCategories.find(c => c.toLowerCase() === cleanDetected);
   return matched || 'Other';
 }
+
+export const DEFAULT_INVOICE_PROMPT = `You are an expert electronics inventory & invoice parsing assistant.
+Analyze the provided purchase invoice, delivery challan, packing slip, order receipt, or order summary document/image.
+Extract all electronics components, chips, modules, dev boards, sensors, passives, switches, connectors, and hardware accessories.
+
+Available categories in SimVentory: [{CATEGORIES}].
+Choose the closest matching category for each line item.
+
+CRITICAL INSTRUCTIONS FOR INVOICE EXTRACTION:
+1. SUPPLIER / DISTRIBUTOR:
+   - Identify the vendor name (e.g. Robu.in, Mouser Electronics, DigiKey, Hubtronics, LCSC, Adafruit, SparkFun, Amazon, etc.).
+   - Extract the invoice or order number into "invoiceNumber".
+   - Extract the invoice date (YYYY-MM-DD or readable string) into "invoiceDate".
+   - Extract currency symbol/code (e.g. "INR", "USD", "EUR", "₹", "$") into "currency".
+   - Extract total amount into "totalAmount" (number or string).
+
+2. ITEMS LIST:
+   - Extract EVERY individual component or hardware line item into the "items" array.
+   - "name": Clean, concise, descriptive product title (e.g. "ESP32-WROOM-32D Development Board", "NE555 Precision Timer IC DIP-8", "0.1uF 50V Ceramic Capacitor 100-Pack").
+   - "partNumber": The distributor SKU, Manufacturer Part Number (MPN), or catalog item code from the invoice. For Robu, extract the product SKU/Item Code; for Hubtronics, extract the item code or MPN. If none found, leave empty string "".
+   - "quantity": The exact quantity ordered/delivered as an integer >= 1 (e.g. 5, 10, 50). Do not confuse unit price with quantity.
+   - "unitPrice": The price per single unit if visible, or null.
+   - "totalPrice": The line item total price if visible, or null.
+   - "category": Choose the closest category from the available categories list above.
+   - "condition": Default to 'Packed' since newly received from distributor.
+   - "description": Technical summary or specs mentioned on the invoice line item.
+   - "tags": Array of 3-6 relevant keywords (e.g. ["ESP32", "WiFi", "Microcontroller"]).
+
+Return STRICTLY AND ONLY a single valid JSON object matching this schema:
+{
+  "supplierName": "Robu.in",
+  "invoiceNumber": "INV-10924",
+  "invoiceDate": "2026-10-25",
+  "currency": "INR",
+  "totalAmount": 1250.00,
+  "items": [
+    {
+      "name": "ESP32 Dev Board",
+      "partNumber": "29793",
+      "quantity": 2,
+      "unitPrice": 350.00,
+      "totalPrice": 700.00,
+      "category": "Modules",
+      "condition": "Packed",
+      "description": "ESP-WROOM-32 WiFi and Bluetooth development board",
+      "tags": ["ESP32", "WiFi", "Bluetooth", "Module"]
+    }
+  ]
+}`;
+
+function sanitizeInvoiceResult(parsed, categories = [], model = '', provider = '') {
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('AI invoice response was empty or malformed.');
+  }
+
+  const supplierName = (parsed.supplierName || parsed.vendor || parsed.distributor || '').trim();
+  const invoiceNumber = (parsed.invoiceNumber || parsed.orderNumber || parsed.invoiceNo || '').trim();
+  const invoiceDate = (parsed.invoiceDate || parsed.orderDate || parsed.date || '').trim();
+  const currency = (parsed.currency || '').trim();
+  const totalAmount = parsed.totalAmount !== undefined ? parsed.totalAmount : null;
+
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  const VALID_CONDITIONS = ['Unpacked New', 'Unpacked Used', 'Partially Working', 'Packed', 'Damaged'];
+
+  const items = rawItems.map(item => {
+    const rawCond = (item.condition || '').trim();
+    const matchedCond = VALID_CONDITIONS.find(c => c.toLowerCase() === rawCond.toLowerCase()) || 'Packed';
+
+    let quantity = 1;
+    const rawQty = item.quantity !== undefined ? item.quantity : item.qty;
+    if (rawQty !== undefined && rawQty !== null) {
+      const num = parseInt(rawQty, 10);
+      if (!isNaN(num) && num > 0) {
+        quantity = num;
+      }
+    }
+
+    const name = (item.name || item.title || item.description || 'Unlabeled Component').trim();
+    let partNumber = (item.partNumber || item.sku || item.itemCode || item.mpn || '').trim();
+    // Clean WH/IN signatures if present
+    if (/WH\s*[\/\\]\s*IN/i.test(partNumber)) {
+      const match = partNumber.match(/\b(\d{4,8})\b/);
+      partNumber = match ? match[1] : '';
+    }
+
+    return {
+      name,
+      partNumber,
+      quantity,
+      unitPrice: item.unitPrice !== undefined ? item.unitPrice : null,
+      totalPrice: item.totalPrice !== undefined ? item.totalPrice : null,
+      category: matchCategory(item.category, categories),
+      condition: matchedCond,
+      description: (item.description || '').trim(),
+      tags: Array.isArray(item.tags) ? item.tags.map(t => String(t).trim()).filter(Boolean) : [],
+    };
+  });
+
+  return {
+    supplierName,
+    invoiceNumber,
+    invoiceDate,
+    currency,
+    totalAmount,
+    items,
+    modelUsed: model,
+    providerUsed: provider,
+  };
+}
+
+async function executeInvoiceRequest(config, base64Images = [], rawText = '', categories = [], hint = '') {
+  const { provider, endpoint, apiKey, model, useServerProxy } = config;
+  const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.custom;
+
+  if (preset.requiresKey && !apiKey) {
+    throw new Error(`API Key for ${preset.name} is missing.`);
+  }
+
+  const categoryListStr = categories.length > 0
+    ? categories.join(', ')
+    : 'Sensors, ICs, Resistors, Capacitors, LEDs, Connectors, Switches, Motors, Modules, Other';
+
+  const systemInstructions = DEFAULT_INVOICE_PROMPT.replace('{CATEGORIES}', categoryListStr) +
+    (hint ? `\n\nUSER-PROVIDED INVOICE CLUE / HINT:\n"${hint}"` : '');
+
+  let rawResponseText = '';
+
+  if (provider === 'gemini') {
+    const cleanEndpoint = (endpoint || 'https://generativelanguage.googleapis.com/v1beta/models').replace(/\/+$/, '');
+    const url = `${cleanEndpoint}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const inlineParts = base64Images.map(img => {
+      const matches = img.match(/^data:([^;]+);base64,(.+)$/);
+      const mimeType = matches ? matches[1] : 'image/jpeg';
+      const base64Data = matches ? matches[2] : img;
+      return {
+        inline_data: {
+          mime_type: mimeType,
+          data: base64Data,
+        },
+      };
+    });
+
+    const textParts = [{ text: systemInstructions }];
+    if (rawText && rawText.trim()) {
+      textParts.push({ text: `\n\nEXTRACTED INVOICE TEXT CONTENT:\n${rawText.trim()}` });
+    }
+
+    const payload = {
+      contents: [
+        {
+          parts: [...textParts, ...inlineParts],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        response_mime_type: 'application/json',
+      },
+    };
+
+    const data = await dispatchRequest({
+      url,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      useServerProxy,
+    });
+
+    const candidate = data.candidates?.[0];
+    const parts = candidate?.content?.parts || [];
+    rawResponseText = parts.map(p => p.text || '').filter(Boolean).join('\n');
+  } else {
+    // OpenAI / OpenRouter / Local Ollama / Custom
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    if (provider === 'openrouter') {
+      headers['HTTP-Referer'] = window.location.origin;
+      headers['X-Title'] = 'SimVentory';
+    }
+
+    const userParts = [
+      {
+        type: 'text',
+        text: 'Extract all electronics components, quantities, prices, and distributor details from this invoice.' +
+          (rawText ? `\n\nExtracted invoice text:\n${rawText}` : '') +
+          (hint ? `\n\nUser hint: "${hint}"` : ''),
+      },
+      ...base64Images.map(img => ({
+        type: 'image_url',
+        image_url: { url: img },
+      })),
+    ];
+
+    const payload = {
+      model,
+      messages: [
+        { role: 'system', content: systemInstructions },
+        { role: 'user', content: userParts },
+      ],
+      temperature: 0.1,
+      max_tokens: 4000,
+    };
+
+    const data = await dispatchRequest({
+      url: endpoint,
+      method: 'POST',
+      headers,
+      body: payload,
+      useServerProxy,
+    });
+
+    rawResponseText = data.choices?.[0]?.message?.content || '';
+  }
+
+  const parsed = parseAIResponseJSON(rawResponseText);
+  return sanitizeInvoiceResult(parsed, categories, model, provider);
+}
+
+/**
+ * Extract electronics components, quantities, and distributor metadata from an invoice.
+ * Supports image frames, PDF text, rate-limiting, and backup model auto-failover.
+ * @param {Object} options
+ * @param {Array<string|Blob>} options.images - Array of image Data URLs or Blobs
+ * @param {string} [options.rawText] - Optional text extracted from PDF
+ * @param {Array<string>} [options.categories] - List of category names
+ * @param {string} [options.hint] - Optional user hint or distributor note
+ * @returns {Promise<Object>} Extracted invoice details and items
+ */
+export async function analyzeInvoiceDocument({ images = [], rawText = '', categories = [], hint = '' }) {
+  await fetchAISettings().catch(() => {});
+  const settings = getAISettings();
+  if (!settings.enabled) {
+    throw new Error('AI recognition is disabled in Settings.');
+  }
+
+  if (images.length === 0 && (!rawText || !rawText.trim())) {
+    throw new Error('Please provide at least one invoice image page or document text.');
+  }
+
+  // Convert all images to Base64 data URLs
+  const base64Images = [];
+  for (const img of images) {
+    if (img instanceof Blob) {
+      base64Images.push(await blobToBase64(img));
+    } else if (typeof img === 'string') {
+      if (img.startsWith('data:')) {
+        base64Images.push(img);
+      } else {
+        const res = await fetch(img);
+        const blob = await res.blob();
+        base64Images.push(await blobToBase64(blob));
+      }
+    }
+  }
+
+  const primaryConfig = {
+    provider: settings.provider,
+    endpoint: settings.endpoint,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    useServerProxy: settings.useServerProxy,
+  };
+
+  const backupProvider = settings.backupProvider || settings.provider;
+  const backupPreset = PROVIDER_PRESETS[backupProvider] || PROVIDER_PRESETS.custom;
+  const backupEndpoint = (settings.backupEndpoint && settings.backupEndpoint.trim())
+    ? settings.backupEndpoint.trim()
+    : (backupPreset.endpoint || settings.endpoint);
+  const backupApiKey = (settings.backupApiKey && settings.backupApiKey.trim())
+    ? settings.backupApiKey.trim()
+    : (backupProvider === settings.provider ? settings.apiKey : '');
+
+  const backupConfig = {
+    provider: backupProvider,
+    endpoint: backupEndpoint,
+    apiKey: backupApiKey,
+    model: settings.backupModel,
+    useServerProxy: settings.backupUseServerProxy !== undefined ? settings.backupUseServerProxy : settings.useServerProxy,
+  };
+
+  const hasBackup = settings.backupEnabled && Boolean(settings.backupModel && settings.backupModel.trim());
+  const rpmStatus = getPrimaryRpmStatus(settings.primaryRpmLimit);
+
+  // 1. Rate Limit Proactive Switching
+  if (hasBackup && rpmStatus.isLimitReached) {
+    console.warn(`[AI Service] Primary model rate limit reached. Auto-switching invoice parsing to backup model (${backupConfig.model}).`);
+    try {
+      const backupResult = await executeInvoiceRequest(backupConfig, base64Images, rawText, categories, hint);
+      backupResult.switchedToBackup = true;
+      backupResult.backupReason = `Primary model rate limit (${rpmStatus.rpmLimit} req/min) reached. Auto-switched to backup model.`;
+      backupResult.modelUsed = `${backupConfig.model} (Backup: Rate limit)`;
+      return backupResult;
+    } catch (backupErr) {
+      console.error('[AI Service] Backup model invoice parsing failed after rate limit switch:', backupErr);
+      throw new Error(`Primary reached ${rpmStatus.rpmLimit} req/min limit. Backup model failed: ${backupErr.message}`);
+    }
+  }
+
+  // 2. Try Primary Model
+  try {
+    recordPrimaryRequest();
+    const result = await executeInvoiceRequest(primaryConfig, base64Images, rawText, categories, hint);
+    result.switchedToBackup = false;
+    return result;
+  } catch (primaryErr) {
+    // 3. Reactive Failover
+    if (hasBackup) {
+      console.warn(`[AI Service] Primary model (${primaryConfig.model}) invoice parsing failed: ${primaryErr.message}. Invoking backup model...`);
+      try {
+        const backupResult = await executeInvoiceRequest(backupConfig, base64Images, rawText, categories, hint);
+        backupResult.switchedToBackup = true;
+        backupResult.backupReason = `Primary failed (${primaryErr.message.slice(0, 100)}). Auto-switched to backup model.`;
+        backupResult.modelUsed = `${backupConfig.model} (Backup: Failover)`;
+        return backupResult;
+      } catch (backupErr) {
+        console.error('[AI Service] Backup model invoice parsing also failed:', backupErr);
+        throw new Error(`Primary failed: ${primaryErr.message} | Backup failed: ${backupErr.message}`);
+      }
+    }
+    throw primaryErr;
+  }
+}

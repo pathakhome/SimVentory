@@ -7,6 +7,7 @@ import { renderDashboard } from './views/dashboard.js';
 import { renderInventory } from './views/inventory.js';
 import { renderItemForm } from './views/itemForm.js';
 import { renderQueue } from './views/queue.js';
+import { renderInvoiceView } from './views/invoiceView.js';
 import { renderSettings } from './views/settings.js';
 import { openItemDetailModal } from './views/itemModal.js';
 import { openScannerModal } from './views/scannerModal.js';
@@ -103,6 +104,9 @@ async function renderCurrentView() {
       break;
     case 'queue':
       cleanup = await renderQueue(mainContent, context);
+      break;
+    case 'invoice':
+      cleanup = await renderInvoiceView(mainContent, context);
       break;
     case 'settings':
       cleanup = await renderSettings(mainContent, context);
