@@ -6,10 +6,11 @@
  * interface asking whether to update existing stock or create a new entry for each item.
  */
 
-import { getAllItems, saveItem, addHistory, getCategories, getLocations, saveLocation, generateId } from '../db.js';
+import { getAllItems, saveItem, addHistory, getCategories, getLocations, saveLocation, generateId, getImage, saveImage } from '../db.js';
 import { analyzeInvoiceDocument, getAISettings } from '../services/aiService.js';
 import { renderPdfPages } from '../services/pdfUtil.js';
 import { openCameraModal } from './cameraModal.js';
+import { openCropperModal } from './cropperModal.js';
 import { showToast } from '../toast.js';
 import { ITEM_CONDITIONS, getCategoryColor, getConditionMeta } from '../categories.js';
 import { addFilesToQueue } from '../services/queueService.js';
@@ -500,59 +501,127 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
             </div>
           </div>
 
-          <!-- Middle Row: Editable Inputs Grid -->
-          <div style="display: grid; grid-template-columns: 2fr 1fr 100px 1.2fr 1.2fr 110px; gap: 10px; align-items: center;" class="invoice-item-grid">
-            <!-- Name -->
-            <div>
-              <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Component Name</label>
-              <input type="text" class="form-control form-control-sm item-field-name" data-index="${idx}" value="${escapeAttr(item.name)}" />
+          <!-- Main Content: Image Column + Field Grid -->
+          <div style="display: flex; gap: 14px; align-items: flex-start;" class="invoice-item-content-wrap">
+            <!-- Left: Component Thumbnail & Image Tools -->
+            <div class="invoice-item-thumb-col" style="width: 82px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+              ${(item.previewUrl || item.existingImageUrl) ? `
+                <div class="item-thumb-container" style="position: relative; width: 78px; height: 78px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-secondary); background: #0b0f19;">
+                  <img
+                    src="${item.previewUrl || item.existingImageUrl}"
+                    alt="Component Photo"
+                    class="item-thumb-preview"
+                    data-index="${idx}"
+                    style="width: 100%; height: 100%; object-fit: cover;"
+                  />
+                  <div class="item-thumb-overlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.65); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; opacity: 0; transition: opacity 0.15s ease;">
+                    <button type="button" class="btn-recrop-item" data-index="${idx}" style="background: rgba(99,102,241,0.9); border: none; color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 2px 6px; cursor: pointer;">
+                      ✂️ Recrop
+                    </button>
+                    <button type="button" class="btn-remove-thumb" data-index="${idx}" style="background: rgba(239,68,68,0.9); border: none; color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 2px 6px; cursor: pointer;">
+                      ✕ Clear
+                    </button>
+                  </div>
+                </div>
+                <span style="font-size: 9.5px; font-weight: 600; color: ${item.imageBlob ? '#a78bfa' : '#60a5fa'}; text-align: center;">
+                  ${item.imageBlob ? '✨ Custom' : '📦 Vault'}
+                </span>
+              ` : `
+                <div class="item-thumb-placeholder" style="width: 78px; height: 78px; border-radius: 8px; border: 1.5px dashed var(--border-secondary); background: var(--bg-tertiary); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2px;">
+                  <span style="font-size: 22px; opacity: 0.5;">📷</span>
+                  <span style="font-size: 9.5px; font-weight: 600; color: var(--text-tertiary);">No Photo</span>
+                </div>
+              `}
+
+              <!-- Mini Action Buttons under photo -->
+              <div style="display: flex; gap: 3px; width: 100%; justify-content: center; flex-wrap: wrap;">
+                ${(currentFile || pdfPages.length > 0) ? `
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm btn-crop-invoice-item"
+                    data-index="${idx}"
+                    title="Crop this component's picture directly from the invoice document"
+                    style="padding: 2px 5px; font-size: 9.5px; border-radius: 4px; line-height: 1.2;"
+                  >
+                    ✂️ Crop
+                  </button>
+                ` : ''}
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm btn-photo-item"
+                  data-index="${idx}"
+                  title="Snap photo with camera"
+                  style="padding: 2px 5px; font-size: 9.5px; border-radius: 4px; line-height: 1.2;"
+                >
+                  📸 Snap
+                </button>
+                <label
+                  class="btn btn-secondary btn-sm"
+                  title="Upload image file from device"
+                  style="padding: 2px 5px; font-size: 9.5px; border-radius: 4px; line-height: 1.2; cursor: pointer; display: inline-flex; align-items: center;"
+                >
+                  📁
+                  <input type="file" accept="image/*" class="item-file-input" data-index="${idx}" style="display: none;" />
+                </label>
+              </div>
             </div>
 
-            <!-- SKU / Part # -->
-            <div>
-              <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">SKU / Part #</label>
-              <input type="text" class="form-control form-control-sm item-field-sku" data-index="${idx}" value="${escapeAttr(item.partNumber || '')}" placeholder="None" />
-            </div>
+            <!-- Right: Editable Inputs Grid & Description -->
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: grid; grid-template-columns: 2fr 1fr 90px 1.2fr 1.2fr 100px; gap: 10px; align-items: center;" class="invoice-item-grid">
+                <!-- Name -->
+                <div>
+                  <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Component Name</label>
+                  <input type="text" class="form-control form-control-sm item-field-name" data-index="${idx}" value="${escapeAttr(item.name)}" />
+                </div>
 
-            <!-- Quantity -->
-            <div>
-              <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Quantity</label>
-              <input type="number" min="1" class="form-control form-control-sm item-field-qty" data-index="${idx}" value="${item.quantity}" style="font-weight: 700;" />
-            </div>
+                <!-- SKU / Part # -->
+                <div>
+                  <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">SKU / Part #</label>
+                  <input type="text" class="form-control form-control-sm item-field-sku" data-index="${idx}" value="${escapeAttr(item.partNumber || '')}" placeholder="None" />
+                </div>
 
-            <!-- Category -->
-            <div>
-              <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Category</label>
-              <select class="form-control form-control-sm item-field-category" data-index="${idx}">
-                ${categories.map(c => `<option value="${escapeAttr(c.name)}" ${c.name.toLowerCase() === item.category.toLowerCase() ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>`).join('')}
-              </select>
-            </div>
+                <!-- Quantity -->
+                <div>
+                  <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Quantity</label>
+                  <input type="number" min="1" class="form-control form-control-sm item-field-qty" data-index="${idx}" value="${item.quantity}" style="font-weight: 700;" />
+                </div>
 
-            <!-- Storage Location -->
-            <div>
-              <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Location</label>
-              <input
-                type="text"
-                class="form-control form-control-sm item-field-location"
-                data-index="${idx}"
-                value="${escapeAttr(item.location || (isMatched && item.action === 'update' ? existing.location : defaultLocationName))}"
-                list="location-datalist"
-              />
-            </div>
+                <!-- Category -->
+                <div>
+                  <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Category</label>
+                  <select class="form-control form-control-sm item-field-category" data-index="${idx}">
+                    ${categories.map(c => `<option value="${escapeAttr(c.name)}" ${c.name.toLowerCase() === item.category.toLowerCase() ? 'selected' : ''}>${c.icon || '📦'} ${escapeHtml(c.name)}</option>`).join('')}
+                  </select>
+                </div>
 
-            <!-- Unit Price -->
-            <div>
-              <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Unit Price</label>
-              <input type="text" class="form-control form-control-sm item-field-price" data-index="${idx}" value="${escapeAttr(item.unitPrice !== null && item.unitPrice !== undefined ? String(item.unitPrice) : '')}" placeholder="—" />
+                <!-- Storage Location -->
+                <div>
+                  <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Location</label>
+                  <input
+                    type="text"
+                    class="form-control form-control-sm item-field-location"
+                    data-index="${idx}"
+                    value="${escapeAttr(item.location || (isMatched && item.action === 'update' ? existing.location : defaultLocationName))}"
+                    list="location-datalist"
+                  />
+                </div>
+
+                <!-- Unit Price -->
+                <div>
+                  <label style="font-size: 10px; font-weight: 700; color: var(--text-tertiary); display: block; margin-bottom: 2px;">Unit Price</label>
+                  <input type="text" class="form-control form-control-sm item-field-price" data-index="${idx}" value="${escapeAttr(item.unitPrice !== null && item.unitPrice !== undefined ? String(item.unitPrice) : '')}" placeholder="—" />
+                </div>
+              </div>
+
+              <!-- Description snippet if present -->
+              ${item.description ? `
+                <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; background: rgba(0,0,0,0.15); padding: 6px 10px; border-radius: 4px;">
+                  <span style="font-weight: 600; color: var(--text-tertiary);">Details:</span> ${escapeHtml(item.description)}
+                </div>
+              ` : ''}
             </div>
           </div>
-
-          <!-- Description snippet if present -->
-          ${item.description ? `
-            <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; background: rgba(0,0,0,0.15); padding: 6px 10px; border-radius: 4px;">
-              <span style="font-weight: 600; color: var(--text-tertiary);">Details:</span> ${escapeHtml(item.description)}
-            </div>
-          ` : ''}
         </div>
       </div>
     `;
@@ -781,6 +850,122 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
       });
     });
 
+    // Image Action: Crop directly from invoice page
+    const btnCropInvoice = container.querySelectorAll('.btn-crop-invoice-item');
+    btnCropInvoice.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.index, 10);
+        const item = reconciledItems[idx];
+        if (!item) return;
+
+        let sourceImage = null;
+        if (fileType === 'pdf' && pdfPages.length > 0) {
+          sourceImage = pdfPages[activePageIdx]?.dataUrl || pdfPages[0]?.dataUrl;
+        } else if (fileType === 'image') {
+          sourceImage = imagePreviewUrl || currentFile;
+        }
+
+        if (!sourceImage) {
+          showToast('No invoice image loaded to crop from.', 'warning');
+          return;
+        }
+
+        openCropperModal({
+          image: sourceImage,
+          onDone: (croppedBlob) => {
+            item.imageBlob = croppedBlob;
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            item.previewUrl = URL.createObjectURL(croppedBlob);
+            render();
+            showToast(`Cropped photo for ${item.name}!`, 'success');
+          },
+        });
+      });
+    });
+
+    // Image Action: Re-crop existing image
+    const btnRecrop = container.querySelectorAll('.btn-recrop-item');
+    btnRecrop.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.index, 10);
+        const item = reconciledItems[idx];
+        if (!item) return;
+
+        const source = item.imageBlob || item.previewUrl || item.existingImageBlob || item.existingImageUrl;
+        if (!source) return;
+
+        openCropperModal({
+          image: source,
+          onDone: (croppedBlob) => {
+            item.imageBlob = croppedBlob;
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            item.previewUrl = URL.createObjectURL(croppedBlob);
+            render();
+            showToast(`Re-cropped photo for ${item.name}!`, 'success');
+          },
+        });
+      });
+    });
+
+    // Image Action: Snap photo with camera
+    const btnSnapPhoto = container.querySelectorAll('.btn-photo-item');
+    btnSnapPhoto.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.index, 10);
+        const item = reconciledItems[idx];
+        if (!item) return;
+
+        openCameraModal({
+          onCapture: (capturedBlob) => {
+            item.imageBlob = capturedBlob;
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            item.previewUrl = URL.createObjectURL(capturedBlob);
+            render();
+            showToast(`Photo captured for ${item.name}!`, 'success');
+          },
+        });
+      });
+    });
+
+    // Image Action: Upload image file from device
+    const fileInputs = container.querySelectorAll('.item-file-input');
+    fileInputs.forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(input.dataset.index, 10);
+        const item = reconciledItems[idx];
+        if (!item || !e.target.files || !e.target.files[0]) return;
+
+        const file = e.target.files[0];
+        item.imageBlob = file;
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        item.previewUrl = URL.createObjectURL(file);
+        render();
+        showToast(`Image loaded for ${item.name}!`, 'success');
+      });
+    });
+
+    // Image Action: Remove photo
+    const btnRemoveThumbs = container.querySelectorAll('.btn-remove-thumb');
+    btnRemoveThumbs.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.index, 10);
+        const item = reconciledItems[idx];
+        if (!item) return;
+
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        item.imageBlob = null;
+        item.previewUrl = null;
+        item.existingImageUrl = null;
+        item.existingImageBlob = null;
+        render();
+        showToast('Photo removed', 'info');
+      });
+    });
+
     // Inline field modifications
     bindFieldChange('.item-field-name', 'name');
     bindFieldChange('.item-field-sku', 'partNumber');
@@ -898,8 +1083,25 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
           action: matched ? 'update' : 'create',
           included: true,
           location: matched ? matched.location : defaultLocationName,
+          imageBlob: null,
+          previewUrl: null,
+          existingImageUrl: null,
+          existingImageBlob: null,
         };
       });
+
+      // Asynchronously fetch existing vault photos for matched items
+      for (const rec of reconciledItems) {
+        if (rec.matchedItem) {
+          getImage(rec.matchedItem.id).then(blob => {
+            if (blob) {
+              rec.existingImageBlob = blob;
+              rec.existingImageUrl = URL.createObjectURL(blob);
+              render();
+            }
+          }).catch(() => {});
+        }
+      }
 
       showToast(`Parsed ${reconciledItems.length} components from invoice!`, 'success');
     } catch (err) {
@@ -993,6 +1195,12 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
 
           await saveItem(updated);
           await addHistory(existing.id, 'restocked', addQty);
+
+          // Save new image if user provided/cropped one for this item
+          if (item.imageBlob) {
+            await saveImage(existing.id, item.imageBlob);
+          }
+
           updatedCount++;
         } else {
           // CREATE NEW COMPONENT ENTRY
@@ -1025,6 +1233,14 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
 
           await saveItem(newItem);
           await addHistory(newId, 'created', newItem.quantity);
+
+          // Save image attached to this new component
+          if (item.imageBlob) {
+            await saveImage(newId, item.imageBlob);
+          } else if (item.existingImageBlob) {
+            await saveImage(newId, item.existingImageBlob);
+          }
+
           createdCount++;
 
           if (sendToQueue) {

@@ -1991,3 +1991,19 @@ img {
     grid-template-columns: 1fr !important;
   }
 }
+
+.item-thumb-container:hover .item-thumb-overlay {
+  opacity: 1 !important;
+}
+
+@media (max-width: 680px) {
+  .invoice-item-content-wrap {
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+  .invoice-item-thumb-col {
+    width: 100% !important;
+    margin-bottom: 6px;
+  }
+}
+
