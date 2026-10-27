@@ -778,53 +778,144 @@ app.post('/api/ai/proxy', async (req, res) => {
   }
 });
 
-// Web Component Image Search endpoint
+// Helper to decode HTML entities and clean search titles
+function cleanSearchTitle(str) {
+  if (!str) return '';
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/[\uE000-\uE001]/g, '')
+    .trim();
+}
+
+// Search Bing Images async endpoint (fast, high availability, rich electronics catalog)
+async function searchBingImages(query) {
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const url = `https://www.bing.com/images/async?q=${encodeURIComponent(query)}&count=24&first=0&mmasync=1`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+    signal: AbortSignal.timeout(7000),
+  });
+
+  if (!res.ok) throw new Error(`Bing HTTP ${res.status}`);
+  const html = await res.text();
+  const results = [];
+  const cardRegex = /m="({.*?})"/g;
+  let match;
+  while ((match = cardRegex.exec(html)) !== null && results.length < 20) {
+    try {
+      const decoded = match[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      const obj = JSON.parse(decoded);
+      if (obj.murl || obj.turl) {
+        results.push({
+          title: cleanSearchTitle(obj.t || query),
+          image: obj.murl || obj.turl,
+          thumbnail: obj.turl || obj.murl,
+          width: obj.w,
+          height: obj.h,
+          source: obj.purl || '',
+        });
+      }
+    } catch (_) {}
+  }
+  return results;
+}
+
+// Search Wikimedia Commons API (useful for open-source chips, development boards, and modules)
+async function searchWikimediaImages(query) {
+  const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&prop=imageinfo&iiprop=url|size&format=json&origin=*`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'SimVentory/1.0 (inventory app)' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const pages = Object.values(data.query?.pages || {});
+  return pages.map(p => {
+    const info = p.imageinfo?.[0];
+    if (!info?.url) return null;
+    return {
+      title: cleanSearchTitle(p.title?.replace(/^File:/, '') || query),
+      image: info.url,
+      thumbnail: info.thumburl || info.url,
+      width: info.width,
+      height: info.height,
+      source: info.descriptionurl || '',
+    };
+  }).filter(Boolean);
+}
+
+// DuckDuckGo image search fallback (if bot challenge is absent)
+async function searchDuckDuckGo(query) {
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  const r1 = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
+    headers: { 'User-Agent': userAgent },
+    signal: AbortSignal.timeout(5000),
+  });
+  const html = await r1.text();
+  const match = html.match(/vqd=([\d-]+)/) || html.match(/vqd=['"]([\d-]+)['"]/);
+  if (!match) return [];
+
+  const vqd = match[1];
+  const r2 = await fetch(`https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}`, {
+    headers: {
+      'User-Agent': userAgent,
+      'Referer': 'https://duckduckgo.com/',
+    },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!r2.ok) return [];
+  const data = await r2.json();
+  return (Array.isArray(data.results) ? data.results : []).slice(0, 16).map(r => ({
+    title: cleanSearchTitle(r.title || query),
+    image: r.image,
+    thumbnail: r.thumbnail,
+    width: r.width,
+    height: r.height,
+    source: r.source,
+  }));
+}
+
+// Web Component Image Search endpoint with multi-tier fallback
 app.get('/api/search/images', async (req, res) => {
   const query = (req.query.q || '').trim();
   if (!query) return res.status(400).json({ error: 'Search query parameter "q" is required' });
 
+  let results = [];
   try {
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    const r1 = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
-      headers: { 'User-Agent': userAgent },
-      signal: AbortSignal.timeout(6000),
-    });
-    const html = await r1.text();
-    const match = html.match(/vqd=([\d-]+)/) || html.match(/vqd=['"]([\d-]+)['"]/);
-    if (!match) {
-      return res.json({ results: [] });
-    }
-
-    const vqd = match[1];
-    const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}`;
-    const r2 = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': userAgent,
-        'Referer': 'https://duckduckgo.com/',
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-
-    if (!r2.ok) {
-      return res.status(r2.status).json({ error: 'Image search provider returned error' });
-    }
-
-    const data = await r2.json();
-    const rawResults = Array.isArray(data.results) ? data.results : [];
-    const results = rawResults.slice(0, 14).map(r => ({
-      title: r.title || query,
-      image: r.image,
-      thumbnail: r.thumbnail,
-      width: r.width,
-      height: r.height,
-      source: r.source,
-    }));
-
-    res.json({ results });
+    // 1. Primary: Bing Image Search
+    results = await searchBingImages(query);
   } catch (err) {
-    console.warn('[SimVentory Image Search] Error:', err.message);
-    res.status(500).json({ error: 'Failed to search web images: ' + err.message, results: [] });
+    console.warn('[SimVentory Image Search] Bing search failed, trying fallback:', err.message);
   }
+
+  // 2. Secondary fallback: DuckDuckGo
+  if (!results || results.length === 0) {
+    try {
+      results = await searchDuckDuckGo(query);
+    } catch (err) {
+      console.warn('[SimVentory Image Search] DuckDuckGo search failed, trying fallback:', err.message);
+    }
+  }
+
+  // 3. Tertiary fallback: Wikimedia Commons
+  if (!results || results.length === 0) {
+    try {
+      results = await searchWikimediaImages(query);
+    } catch (err) {
+      console.warn('[SimVentory Image Search] Wikimedia search failed:', err.message);
+    }
+  }
+
+  res.json({ results: results || [] });
 });
 
 // Helper to normalize image URL

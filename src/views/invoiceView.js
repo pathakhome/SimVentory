@@ -1027,8 +1027,9 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
           try {
             const results = await searchComponentImages(query);
             if (results && results.length > 0) {
-              const best = results[0];
-              const blob = await fetchWebImageBlob(best.image || best.thumbnail);
+              const targetUrl = best.image || best.thumbnail;
+              const fallbackUrl = best.thumbnail && best.thumbnail !== targetUrl ? best.thumbnail : '';
+              const blob = await fetchWebImageBlob(targetUrl, fallbackUrl);
               item.imageBlob = blob;
               if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
               item.previewUrl = URL.createObjectURL(blob);

@@ -83,6 +83,7 @@ export async function openWebImageModal({ query = '', initialQuery = '', onSelec
                     src="${r.thumbnail || r.image}"
                     alt="${escapeHtml(r.title)}"
                     loading="lazy"
+                    onerror="if (this.dataset.triedFallback !== '1') { this.dataset.triedFallback = '1'; this.src = '${escapeHtml(r.image)}'; } else { this.style.opacity = '0.3'; }"
                     style="width: 100%; height: 100%; object-fit: contain; padding: 6px; background: #fff; border-radius: 6px;"
                   />
                   <div class="web-image-card-overlay" style="
