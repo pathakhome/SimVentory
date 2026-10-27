@@ -22,11 +22,11 @@ function escapeHtml(str) {
  * @param {string} options.query - Initial search query (e.g. "ESP32-WROOM-32D")
  * @param {Function} options.onSelect - Callback receiving the selected, optimized Blob
  */
-export async function openWebImageModal({ query = '', onSelect }) {
+export async function openWebImageModal({ query = '', initialQuery = '', onSelect }) {
   const modal = document.getElementById('item-modal');
   const modalContent = document.getElementById('item-modal-content');
 
-  let currentQuery = query.trim();
+  let currentQuery = (query || initialQuery || '').trim();
   let results = [];
   let isLoading = true;
 
@@ -150,7 +150,8 @@ export async function openWebImageModal({ query = '', onSelect }) {
         try {
           showToast('Downloading image from web...', 'info');
           const targetUrl = selected.image || selected.thumbnail;
-          const blob = await fetchWebImageBlob(targetUrl);
+          const fallbackUrl = selected.thumbnail && selected.thumbnail !== targetUrl ? selected.thumbnail : '';
+          const blob = await fetchWebImageBlob(targetUrl, fallbackUrl);
           modal.style.display = 'none';
           showToast('Photo attached from web!', 'success');
           if (onSelect) onSelect(blob);

@@ -7,6 +7,7 @@
 import { generateId, saveImage, getImage, saveItem, addHistory, getCategories, saveLocation } from '../db.js';
 import { analyzeComponentImage } from './aiService.js';
 import { optimizeImage } from '../imageUtil.js';
+import { getItemDefaults } from './itemDefaultsService.js';
 
 const QUEUE_STORAGE_KEY = 'simventory_ai_intake_queue';
 
@@ -357,8 +358,9 @@ export async function approveQueueItem(id, overrides = {}) {
   const item = queue.find(i => i.id === id);
   if (!item) throw new Error('Queue item not found');
 
+  const defaults = getItemDefaults();
   const name = (overrides.name !== undefined ? overrides.name : (item.name || item.aiData?.name || '')).trim();
-  const location = (overrides.location !== undefined ? overrides.location : (item.location || '')).trim();
+  const location = (overrides.location !== undefined ? overrides.location : (item.location || defaults.location || '')).trim();
 
   if (!name) throw new Error('Component Name is required.');
   if (!location) throw new Error('Storage Location is required.');
@@ -371,16 +373,16 @@ export async function approveQueueItem(id, overrides = {}) {
   const finalItem = {
     id: item.id,
     name,
-    category: overrides.category || item.category || item.aiData?.category || 'Other',
-    condition: overrides.condition !== undefined ? overrides.condition : (item.condition || item.aiData?.condition || 'Unpacked New'),
+    category: overrides.category || item.category || item.aiData?.category || defaults.category || 'Other',
+    condition: overrides.condition !== undefined ? overrides.condition : (item.condition || item.aiData?.condition || defaults.condition || 'Unpacked New'),
     partNumber: overrides.partNumber !== undefined ? overrides.partNumber : (item.partNumber || item.aiData?.partNumber || ''),
     location,
     usedIn: overrides.usedIn !== undefined ? overrides.usedIn : (item.usedIn || ''),
     quantity: overrides.quantity !== undefined ? overrides.quantity : (item.quantity !== undefined ? item.quantity : 1),
-    lowStockThreshold: overrides.lowStockThreshold !== undefined ? overrides.lowStockThreshold : (item.lowStockThreshold || 0),
+    lowStockThreshold: overrides.lowStockThreshold !== undefined ? overrides.lowStockThreshold : (item.lowStockThreshold !== undefined ? item.lowStockThreshold : defaults.lowStockThreshold || 0),
     description: overrides.description !== undefined ? overrides.description : (item.description || item.aiData?.description || ''),
     tags: Array.isArray(overrides.tags) ? overrides.tags : (item.tags || item.aiData?.tags || []),
-    supplierInfo: overrides.supplierInfo !== undefined ? overrides.supplierInfo : (item.supplierInfo || item.aiData?.supplierInfo || ''),
+    supplierInfo: overrides.supplierInfo !== undefined ? overrides.supplierInfo : (item.supplierInfo || item.aiData?.supplierInfo || defaults.supplierInfo || ''),
     datasheetUrl: overrides.datasheetUrl !== undefined ? overrides.datasheetUrl : (item.datasheetUrl || item.aiData?.datasheetUrl || ''),
     notes: overrides.notes !== undefined ? overrides.notes : (item.notes || item.aiData?.notes || ''),
     isFavorite: false,

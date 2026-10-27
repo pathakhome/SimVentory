@@ -16,8 +16,9 @@ import {
   saveLocation,
   deleteLocation,
 } from '../db.js';
-import { LOCATION_COLOR_PRESETS, DEFAULT_LOCATION_COLOR } from '../categories.js';
+import { LOCATION_COLOR_PRESETS, DEFAULT_LOCATION_COLOR, ITEM_CONDITIONS, getConditionMeta, DEFAULT_CONDITION } from '../categories.js';
 import { showToast } from '../toast.js';
+import { getItemDefaults, fetchItemDefaults, saveItemDefaults, DEFAULT_ITEM_PRESETS } from '../services/itemDefaultsService.js';
 import {
   getAISettings,
   fetchAISettings,
@@ -39,13 +40,14 @@ import {
 } from '../services/backupService.js';
 
 export async function renderSettings(container, { refreshView }) {
-  const [items, categories, locations, aiSettings, backupSettings, backupsList] = await Promise.all([
+  const [items, categories, locations, aiSettings, backupSettings, backupsList, itemDefaults] = await Promise.all([
     getAllItems(),
     getCategories(),
     getLocations(),
     fetchAISettings(),
     getBackupSettings(),
     getBackupsList(),
+    fetchItemDefaults(),
   ]);
   const currentPreset = PROVIDER_PRESETS[aiSettings.provider] || PROVIDER_PRESETS.custom;
 
@@ -206,6 +208,127 @@ export async function renderSettings(container, { refreshView }) {
             `).join('')}
           </div>
         `}
+      </div>
+
+      <!-- Default Component Details (Presets) -->
+      <div class="settings-section">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div>
+            <h3>📦 Default Component Details (Presets)</h3>
+            <p style="color:var(--text-secondary); font-size:var(--font-size-sm); margin-top:2px;">
+              Preselect default values (such as storage location, supplier, condition, and category) automatically when adding new components.
+            </p>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-secondary); border:1px solid var(--border-secondary); border-radius:var(--border-radius-lg); padding:16px;">
+          <!-- Auto-apply toggle -->
+          <div class="settings-row" style="padding-top:0; border-bottom:1px solid var(--border-primary); padding-bottom:12px; margin-bottom:14px;">
+            <div class="settings-row-info">
+              <h4>Auto-fill Defaults on New Components</h4>
+              <p>Automatically preselect these values when opening the Add Component form</p>
+            </div>
+            <label class="switch" style="position:relative; display:inline-block; width:46px; height:24px; cursor:pointer;">
+              <input type="checkbox" id="defaults-autoapply-toggle" ${itemDefaults.autoApply !== false ? 'checked' : ''} style="display:none;" />
+              <span id="defaults-toggle-track" style="position:absolute; inset:0; background:${itemDefaults.autoApply !== false ? 'var(--accent-primary)' : 'var(--bg-tertiary)'}; border-radius:24px; transition:background 0.25s ease; border:1px solid var(--border-secondary);">
+                <span id="defaults-toggle-thumb" style="position:absolute; top:2px; left:${itemDefaults.autoApply !== false ? '24px' : '3px'}; width:18px; height:18px; background:#fff; border-radius:50%; transition:left 0.25s ease; box-shadow:0 1px 3px rgba(0,0,0,0.4);"></span>
+              </span>
+            </label>
+          </div>
+
+          <form id="item-defaults-form">
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:14px;">
+              <!-- Default Storage Location -->
+              <div>
+                <label class="form-label" for="default-location-input" style="font-size:var(--font-size-xs);">Default Storage Location</label>
+                <input type="text" id="default-location-input" list="default-locations-datalist" value="${escapeAttr(itemDefaults.location || '')}" placeholder="e.g. Drawer A1, Bin 4, Shelf 2" style="width:100%;" />
+                <datalist id="default-locations-datalist">
+                  ${locations.map(l => `<option value="${escapeAttr(l.name)}">${escapeAttr(l.description ? `${l.name} - ${l.description}` : l.name)}</option>`).join('')}
+                </datalist>
+                <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                  Preselected storage location for newly added parts
+                </div>
+              </div>
+
+              <!-- Default Supplier -->
+              <div>
+                <label class="form-label" for="default-supplier-input" style="font-size:var(--font-size-xs);">Default Supplier / Vendor</label>
+                <input type="text" id="default-supplier-input" list="default-suppliers-datalist" value="${escapeAttr(itemDefaults.supplierInfo || '')}" placeholder="e.g. Robu.in, Amazon, Mouser, LCSC" style="width:100%;" />
+                <datalist id="default-suppliers-datalist">
+                  <option value="Robu.in"></option>
+                  <option value="Amazon"></option>
+                  <option value="Hubtronics"></option>
+                  <option value="Mouser"></option>
+                  <option value="DigiKey"></option>
+                  <option value="LCSC"></option>
+                  <option value="AliExpress"></option>
+                  <option value="Local Store"></option>
+                </datalist>
+                <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                  Primary vendor or distributor (e.g. Robu.in, Amazon)
+                </div>
+              </div>
+
+              <!-- Default Category -->
+              <div>
+                <label class="form-label" for="default-category-select" style="font-size:var(--font-size-xs);">Default Category</label>
+                <select id="default-category-select" style="width:100%;">
+                  ${categories.map(c => `
+                    <option value="${escapeAttr(c.name)}" ${(itemDefaults.category || 'Other') === c.name ? 'selected' : ''}>
+                      ${c.icon || '📦'} ${escapeHtml(c.name)}
+                    </option>
+                  `).join('')}
+                </select>
+                <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                  Initial category assigned when adding components
+                </div>
+              </div>
+
+              <!-- Default Condition -->
+              <div>
+                <label class="form-label" for="default-condition-select" style="font-size:var(--font-size-xs);">Default Condition</label>
+                <select id="default-condition-select" style="width:100%;">
+                  ${ITEM_CONDITIONS.map(cond => `
+                    <option value="${escapeAttr(cond)}" ${(itemDefaults.condition || DEFAULT_CONDITION) === cond ? 'selected' : ''}>
+                      ${getConditionMeta(cond).icon} ${escapeHtml(cond)}
+                    </option>
+                  `).join('')}
+                </select>
+                <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                  Default physical condition of components
+                </div>
+              </div>
+
+              <!-- Default Initial Quantity -->
+              <div>
+                <label class="form-label" for="default-qty-input" style="font-size:var(--font-size-xs);">Default Quantity</label>
+                <input type="number" id="default-qty-input" min="0" value="${itemDefaults.quantity !== undefined ? itemDefaults.quantity : 1}" style="width:100%;" />
+                <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                  Starting count on the Add Component form
+                </div>
+              </div>
+
+              <!-- Default Low Stock Threshold -->
+              <div>
+                <label class="form-label" for="default-threshold-input" style="font-size:var(--font-size-xs);">Default Low Stock Warning Threshold</label>
+                <input type="number" id="default-threshold-input" min="0" value="${itemDefaults.lowStockThreshold !== undefined ? itemDefaults.lowStockThreshold : 0}" style="width:100%;" />
+                <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">
+                  Reorder warning threshold (0 = alerts disabled)
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end; border-top:1px solid var(--border-primary); padding-top:12px;">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-defaults">
+                Reset Defaults
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm" id="btn-save-defaults" style="display:inline-flex; align-items:center; gap:6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Save Default Details
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
 
       <!-- AI Vision & Autofill Settings -->
@@ -1125,6 +1248,67 @@ export async function renderSettings(container, { refreshView }) {
     const label = document.querySelector('.theme-label');
     if (label) label.textContent = theme === 'light' ? 'Light Mode' : 'Dark Mode';
   });
+
+  // ---- Item Defaults Event Handlers ----
+  const defaultsToggle = document.getElementById('defaults-autoapply-toggle');
+  const defaultsTrack = document.getElementById('defaults-toggle-track');
+  const defaultsThumb = document.getElementById('defaults-toggle-thumb');
+
+  if (defaultsToggle && defaultsTrack && defaultsThumb) {
+    defaultsToggle.addEventListener('change', async () => {
+      const isAuto = defaultsToggle.checked;
+      defaultsTrack.style.backgroundColor = isAuto ? 'var(--accent-primary)' : 'var(--bg-tertiary)';
+      defaultsThumb.style.left = isAuto ? '24px' : '3px';
+      await saveItemDefaults({ autoApply: isAuto });
+      showToast(isAuto ? 'Defaults auto-fill enabled' : 'Defaults auto-fill disabled', 'info');
+    });
+  }
+
+  const itemDefaultsForm = document.getElementById('item-defaults-form');
+  if (itemDefaultsForm) {
+    itemDefaultsForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const location = (document.getElementById('default-location-input')?.value || '').trim();
+      const supplierInfo = (document.getElementById('default-supplier-input')?.value || '').trim();
+      const category = document.getElementById('default-category-select')?.value || 'Other';
+      const condition = document.getElementById('default-condition-select')?.value || DEFAULT_CONDITION;
+      const quantity = parseInt(document.getElementById('default-qty-input')?.value, 10) || 1;
+      const lowStockThreshold = parseInt(document.getElementById('default-threshold-input')?.value, 10) || 0;
+
+      await saveItemDefaults({
+        location,
+        supplierInfo,
+        category,
+        condition,
+        quantity: Math.max(0, quantity),
+        lowStockThreshold: Math.max(0, lowStockThreshold),
+      });
+
+      showToast('✓ Default component details saved!', 'success');
+    });
+  }
+
+  const resetDefaultsBtn = document.getElementById('btn-reset-defaults');
+  if (resetDefaultsBtn) {
+    resetDefaultsBtn.addEventListener('click', async () => {
+      await saveItemDefaults(DEFAULT_ITEM_PRESETS);
+      const locInput = document.getElementById('default-location-input');
+      const supInput = document.getElementById('default-supplier-input');
+      const catSelect = document.getElementById('default-category-select');
+      const condSelect = document.getElementById('default-condition-select');
+      const qtyInput = document.getElementById('default-qty-input');
+      const threshInput = document.getElementById('default-threshold-input');
+
+      if (locInput) locInput.value = '';
+      if (supInput) supInput.value = '';
+      if (catSelect) catSelect.value = 'Other';
+      if (condSelect) condSelect.value = DEFAULT_CONDITION;
+      if (qtyInput) qtyInput.value = '1';
+      if (threshInput) threshInput.value = '0';
+
+      showToast('Default details reset to factory settings', 'info');
+    });
+  }
 
   // ---- AI Settings Event Handlers ----
   const aiToggle = document.getElementById('ai-enabled-toggle');

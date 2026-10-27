@@ -827,32 +827,114 @@ app.get('/api/search/images', async (req, res) => {
   }
 });
 
-// Proxy and download web image (bypasses browser CORS & hotlinking blocks)
+// Helper to normalize image URL
+function normalizeImageUrl(rawUrl) {
+  if (!rawUrl) return '';
+  let u = String(rawUrl).trim();
+  if (u.startsWith('//')) {
+    u = 'https:' + u;
+  }
+  return u;
+}
+
+// Resilient fetch helper testing multiple header strategies to bypass anti-hotlink and Cloudflare blocks
+async function tryFetchImageBuffer(urlStr) {
+  if (!urlStr) return null;
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch (_) {
+    return null;
+  }
+
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const strategies = [
+    // Strategy 1: Standard browser headers with origin referer
+    {
+      'User-Agent': userAgent,
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': parsed.origin + '/',
+    },
+    // Strategy 2: No referer (bypasses hotlink protection rules)
+    {
+      'User-Agent': userAgent,
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+    // Strategy 3: DuckDuckGo referer
+    {
+      'User-Agent': userAgent,
+      'Accept': '*/*',
+      'Referer': 'https://duckduckgo.com/',
+    },
+  ];
+
+  for (const headers of strategies) {
+    try {
+      const response = await fetch(parsed.toString(), {
+        headers,
+        redirect: 'follow',
+        signal: AbortSignal.timeout(9000),
+      });
+
+      if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        // Guard against HTML error/challenge responses returning 200 OK
+        if (!contentType.includes('text/html') && !contentType.includes('text/plain')) {
+          const buffer = await response.arrayBuffer();
+          if (buffer && buffer.byteLength > 200) {
+            return {
+              buffer: Buffer.from(buffer),
+              contentType: contentType || 'image/jpeg',
+            };
+          }
+        }
+      }
+    } catch (_) {
+      // Try next strategy
+    }
+  }
+  return null;
+}
+
+// Proxy and download web image (bypasses browser CORS & hotlinking blocks with automatic fallback)
 app.get('/api/image/proxy', async (req, res) => {
-  const targetUrl = (req.query.url || '').trim();
-  if (!targetUrl) return res.status(400).json({ error: 'URL parameter is required' });
+  const targetUrl = normalizeImageUrl(req.query.url);
+  const fallbackUrl = normalizeImageUrl(req.query.fallback);
+
+  if (!targetUrl && !fallbackUrl) {
+    return res.status(400).json({ error: 'URL parameter is required' });
+  }
 
   try {
-    const parsed = new URL(targetUrl);
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    const response = await fetch(parsed.toString(), {
-      headers: {
-        'User-Agent': userAgent,
-        'Referer': parsed.origin,
-      },
-      signal: AbortSignal.timeout(10000),
-    });
+    let result = null;
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: 'Failed to fetch image from source' });
+    // 1. Try target URL first
+    if (targetUrl) {
+      result = await tryFetchImageBuffer(targetUrl);
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // 2. If target URL failed or returned non-image, try fallback (e.g. Bing CDN thumbnail)
+    if (!result && fallbackUrl && fallbackUrl !== targetUrl) {
+      console.log(`[SimVentory Image Proxy] Primary image fetch failed, attempting fallback URL: ${fallbackUrl.slice(0, 80)}...`);
+      // If it's a Bing CDN thumbnail, request higher resolution version
+      let highResFallback = fallbackUrl;
+      if (fallbackUrl.includes('.bing.net') && !fallbackUrl.includes('&w=')) {
+        highResFallback = fallbackUrl.includes('?') 
+          ? `${fallbackUrl}&w=800&h=800&c=7&rs=1` 
+          : `${fallbackUrl}?w=800&h=800&c=7&rs=1`;
+      }
+      result = await tryFetchImageBuffer(highResFallback) || await tryFetchImageBuffer(fallbackUrl);
+    }
 
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    if (!result) {
+      return res.status(502).json({ error: 'Failed to download image from source and fallback' });
+    }
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(result.buffer);
   } catch (err) {
     console.warn('[SimVentory Image Proxy] Error:', err.message);
     res.status(500).json({ error: 'Proxy fetch failed: ' + err.message });

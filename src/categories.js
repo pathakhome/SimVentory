@@ -105,22 +105,23 @@ export function getConditionMeta(condition) {
 
 /**
  * Default item structure.
+ * @param {Object} [customDefaults]
  */
-export function createDefaultItem() {
+export function createDefaultItem(customDefaults = {}) {
   return {
     id: '',
     name: '',
     description: '',
-    category: 'Other',
-    condition: DEFAULT_CONDITION,
-    tags: [],
-    quantity: 0,
-    lowStockThreshold: 0,
-    partNumber: '',
-    location: '',
+    category: customDefaults.category || 'Other',
+    condition: customDefaults.condition || DEFAULT_CONDITION,
+    tags: Array.isArray(customDefaults.tags) ? [...customDefaults.tags] : [],
+    quantity: customDefaults.quantity !== undefined ? customDefaults.quantity : 0,
+    lowStockThreshold: customDefaults.lowStockThreshold !== undefined ? customDefaults.lowStockThreshold : 0,
+    partNumber: customDefaults.partNumber || '',
+    location: customDefaults.location || '',
     usedIn: '',
     datasheetUrl: '',
-    supplierInfo: '',
+    supplierInfo: customDefaults.supplierInfo || '',
     notes: '',
     isFavorite: false,
     createdAt: '',

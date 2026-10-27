@@ -16,6 +16,7 @@ import { searchComponentImages, fetchWebImageBlob } from '../services/imageSearc
 import { showToast } from '../toast.js';
 import { ITEM_CONDITIONS, getCategoryColor, getConditionMeta } from '../categories.js';
 import { addFilesToQueue } from '../services/queueService.js';
+import { getItemDefaults } from '../services/itemDefaultsService.js';
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
@@ -1236,7 +1237,8 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
     const invoiceDateInput = container.querySelector('#meta-invoice-date');
     const checkQueue = container.querySelector('#check-send-to-queue');
 
-    const supplier = supplierInput ? supplierInput.value.trim() : (analysisResult?.supplierName || '');
+    const defaults = getItemDefaults();
+    const supplier = supplierInput ? supplierInput.value.trim() : (analysisResult?.supplierName || defaults.supplierInfo || '');
     const invoiceNum = invoiceNumInput ? invoiceNumInput.value.trim() : (analysisResult?.invoiceNumber || '');
     const invoiceDate = invoiceDateInput ? invoiceDateInput.value.trim() : (analysisResult?.invoiceDate || '');
     const sendToQueue = checkQueue ? checkQueue.checked : false;
@@ -1286,7 +1288,7 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
         } else {
           // CREATE NEW COMPONENT ENTRY
           const newId = generateId();
-          const targetLocation = (item.location && item.location.trim()) ? item.location.trim() : defaultLocationName;
+          const targetLocation = (item.location && item.location.trim()) ? item.location.trim() : (defaults.location || 'Drawer 1');
 
           // Ensure location exists in db
           await saveLocation({ name: targetLocation }).catch(() => {});

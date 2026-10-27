@@ -10,6 +10,7 @@ import { openCropperModal } from './cropperModal.js';
 import { openWebImageModal } from './webImageModal.js';
 import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
 import { openAIReviewModal } from './aiReviewModal.js';
+import { getItemDefaults, saveItemDefaults } from '../services/itemDefaultsService.js';
 
 /**
  * Render the add/edit item form.
@@ -47,8 +48,24 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
         imageFile = blob; // Pre-load cloned blob so it persists for the new ID
       }
     }
-  } else if (prefillPartNumber) {
-    item.partNumber = prefillPartNumber;
+  } else {
+    // New item: apply default item details preset if enabled
+    const itemDefaults = getItemDefaults();
+    if (itemDefaults && itemDefaults.autoApply !== false) {
+      if (itemDefaults.location) item.location = itemDefaults.location;
+      if (itemDefaults.supplierInfo) item.supplierInfo = itemDefaults.supplierInfo;
+      if (itemDefaults.category && itemDefaults.category !== 'Other') item.category = itemDefaults.category;
+      if (itemDefaults.condition) item.condition = itemDefaults.condition;
+      if (itemDefaults.lowStockThreshold !== undefined && itemDefaults.lowStockThreshold !== null) {
+        item.lowStockThreshold = itemDefaults.lowStockThreshold;
+      }
+      if (itemDefaults.quantity !== undefined && (item.quantity === 0 || item.quantity === undefined)) {
+        item.quantity = itemDefaults.quantity;
+      }
+    }
+    if (prefillPartNumber) {
+      item.partNumber = prefillPartNumber;
+    }
   }
 
   let categories = await getCategories();
@@ -66,6 +83,18 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
         <h1>${isEdit ? 'Edit Component' : isClone ? 'Duplicate Component' : 'Add Component'}</h1>
         <p>${isEdit ? `Editing: ${item.name}` : isClone ? `Duplicating: ${item.name} — adjust condition, location, or quantity for this batch` : 'Add a new electronic component to your inventory'}</p>
       </div>
+
+      ${!isEdit && !isClone && (item.location || item.supplierInfo) ? `
+        <div id="form-defaults-banner" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.22); border-radius: var(--border-radius-md); padding: 8px 12px; margin-bottom: 16px; font-size: 12px; color: var(--text-secondary);">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 13px;">⚡</span>
+            <span>Preselected defaults: ${item.location ? `<strong>Location:</strong> "${escapeHtml(item.location)}"` : ''}${item.location && item.supplierInfo ? ' • ' : ''}${item.supplierInfo ? `<strong>Supplier:</strong> "${escapeHtml(item.supplierInfo)}"` : ''}</span>
+          </div>
+          <button type="button" id="btn-goto-defaults-settings" style="background: none; border: none; color: var(--accent-primary); font-size: 11.5px; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0;">
+            Configure Defaults →
+          </button>
+        </div>
+      ` : ''}
 
       <form class="item-form" id="item-form">
         <div class="form-grid">
@@ -212,9 +241,14 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
           <div class="form-group">
             <label class="form-label" for="item-location" style="display:flex; justify-content:space-between; align-items:center;">
               <span>Storage Location <span class="required">*</span></span>
-              <button type="button" class="btn btn-secondary" id="btn-quick-add-loc" style="padding: 2px 8px; font-size: var(--font-size-xs); line-height: 1.2;">
-                + New Location
-              </button>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" class="btn btn-secondary" id="btn-save-default-loc" title="Set this location as default for new components" style="padding: 2px 8px; font-size: var(--font-size-xs); line-height: 1.2; display:flex; align-items:center; gap:3px;">
+                  ⭐ Set Default
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-quick-add-loc" style="padding: 2px 8px; font-size: var(--font-size-xs); line-height: 1.2;">
+                  + New Location
+                </button>
+              </div>
             </label>
             <input type="text" id="item-location" list="storage-locations-list" placeholder="e.g., Drawer A1, Bin 4, Shelf 2" value="${escapeAttr(item.location)}" required />
             <datalist id="storage-locations-list">
@@ -230,8 +264,23 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
 
           <!-- Supplier Info -->
           <div class="form-group">
-            <label class="form-label" for="item-supplier">Supplier Info</label>
-            <input type="text" id="item-supplier" placeholder="e.g., Amazon — ₹350" value="${escapeAttr(item.supplierInfo)}" />
+            <label class="form-label" for="item-supplier" style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Supplier Info</span>
+              <button type="button" class="btn btn-secondary" id="btn-save-default-supplier" title="Set this supplier as default for new components" style="padding: 2px 8px; font-size: var(--font-size-xs); line-height: 1.2; display:flex; align-items:center; gap:3px;">
+                ⭐ Set Default
+              </button>
+            </label>
+            <input type="text" id="item-supplier" list="supplier-suggestions-list" placeholder="e.g., Amazon — ₹350, Robu.in, Mouser" value="${escapeAttr(item.supplierInfo)}" />
+            <datalist id="supplier-suggestions-list">
+              <option value="Robu.in"></option>
+              <option value="Amazon"></option>
+              <option value="Hubtronics"></option>
+              <option value="Mouser"></option>
+              <option value="DigiKey"></option>
+              <option value="LCSC"></option>
+              <option value="AliExpress"></option>
+              <option value="Local Store"></option>
+            </datalist>
           </div>
 
           <!-- Used In -->
@@ -978,6 +1027,40 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     showToast(isEdit ? 'Component updated!' : isClone ? 'Duplicate component created!' : 'Component added!', 'success');
     navigateTo('inventory');
   });
+
+  // Set Default buttons
+  const saveDefaultLocBtn = document.getElementById('btn-save-default-loc');
+  if (saveDefaultLocBtn) {
+    saveDefaultLocBtn.addEventListener('click', async () => {
+      const val = (document.getElementById('item-location')?.value || '').trim();
+      if (!val) {
+        showToast('Please type a location name first', 'warning');
+        return;
+      }
+      await saveItemDefaults({ location: val });
+      showToast(`⭐ "${val}" set as default location for new items!`, 'success');
+    });
+  }
+
+  const saveDefaultSupBtn = document.getElementById('btn-save-default-supplier');
+  if (saveDefaultSupBtn) {
+    saveDefaultSupBtn.addEventListener('click', async () => {
+      const val = (document.getElementById('item-supplier')?.value || '').trim();
+      if (!val) {
+        showToast('Please type a supplier name first', 'warning');
+        return;
+      }
+      await saveItemDefaults({ supplierInfo: val });
+      showToast(`⭐ "${val}" set as default supplier for new items!`, 'success');
+    });
+  }
+
+  const gotoDefaultsSettingsBtn = document.getElementById('btn-goto-defaults-settings');
+  if (gotoDefaultsSettingsBtn) {
+    gotoDefaultsSettingsBtn.addEventListener('click', () => {
+      navigateTo('settings');
+    });
+  }
 
   // Cancel
   document.getElementById('form-cancel-btn').addEventListener('click', () => {
