@@ -7,6 +7,7 @@ import { showToast } from '../toast.js';
 import { optimizeImage } from '../imageUtil.js';
 import { openCameraModal } from './cameraModal.js';
 import { openCropperModal } from './cropperModal.js';
+import { openWebImageModal } from './webImageModal.js';
 import { getAISettings, analyzeComponentImage } from '../services/aiService.js';
 import { openAIReviewModal } from './aiReviewModal.js';
 
@@ -86,6 +87,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
                       Crop
                     </button>
+                    <button type="button" class="image-web-btn" id="image-web-btn" title="Search web for photos of this component">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                      Web
+                    </button>
                     <button type="button" class="image-remove-btn" id="image-remove-btn" title="Remove image">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -103,6 +108,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
                     <button type="button" class="btn btn-secondary btn-sm" id="btn-browse" style="pointer-events: auto;">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                       Choose File / Gallery
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-web-search" style="pointer-events: auto;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                      Find Online
                     </button>
                   </div>
                   <div class="upload-placeholder-hint" style="margin-top: 6px;">Live camera viewfinder or direct photo upload</div>
@@ -294,6 +303,7 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     const cameraInput = document.getElementById('camera-file-input');
     const btnCamera = document.getElementById('btn-camera');
     const btnBrowse = document.getElementById('btn-browse');
+    const btnWebSearch = document.getElementById('btn-web-search');
 
     if (btnCamera) {
       btnCamera.addEventListener('click', (e) => {
@@ -308,6 +318,13 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       btnBrowse.addEventListener('click', (e) => {
         e.stopPropagation();
         fileInput.click();
+      });
+    }
+
+    if (btnWebSearch) {
+      btnWebSearch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerWebSearch();
       });
     }
 
@@ -362,6 +379,18 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
     });
   }
 
+  function triggerWebSearch() {
+    const itemName = (document.getElementById('item-name')?.value || '').trim();
+    const partNum = (document.getElementById('item-partnum')?.value || '').trim();
+    const query = partNum || itemName || '';
+    openWebImageModal({
+      initialQuery: query,
+      onSelect: async (blob) => {
+        await applyCroppedImage(blob);
+      },
+    });
+  }
+
   async function applyCroppedImage(blob) {
     try {
       showToast('Optimizing photo...', 'info');
@@ -383,6 +412,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             <button type="button" class="image-crop-btn" id="image-crop-btn" title="Crop / reframe image">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
               Crop
+            </button>
+            <button type="button" class="image-web-btn" id="image-web-btn" title="Search web for photos of this component">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Web
             </button>
             <button type="button" class="image-remove-btn" id="image-remove-btn" title="Remove image">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -407,7 +440,14 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
       return;
     }
 
-    // 2. Re-crop existing image
+    // 2. Search web for component photo
+    if (e.target.closest('.image-web-btn')) {
+      e.stopPropagation();
+      triggerWebSearch();
+      return;
+    }
+
+    // 3. Re-crop existing image
     if (e.target.closest('.image-crop-btn')) {
       e.stopPropagation();
       const targetImage = imageFile || existingImageUrl;
@@ -443,6 +483,10 @@ export async function renderItemForm(container, { navigateTo, refreshView, openS
             <button type="button" class="btn btn-secondary btn-sm" id="btn-browse" style="pointer-events: auto;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
               Choose File / Gallery
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-web-search" style="pointer-events: auto;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Find Online
             </button>
           </div>
           <div class="upload-placeholder-hint" style="margin-top: 6px;">Live camera viewfinder or direct photo upload</div>

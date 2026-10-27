@@ -11,6 +11,8 @@ import { analyzeInvoiceDocument, getAISettings } from '../services/aiService.js'
 import { renderPdfPages } from '../services/pdfUtil.js';
 import { openCameraModal } from './cameraModal.js';
 import { openCropperModal } from './cropperModal.js';
+import { openWebImageModal } from './webImageModal.js';
+import { searchComponentImages, fetchWebImageBlob } from '../services/imageSearchService.js';
 import { showToast } from '../toast.js';
 import { ITEM_CONDITIONS, getCategoryColor, getConditionMeta } from '../categories.js';
 import { addFilesToQueue } from '../services/queueService.js';
@@ -363,6 +365,10 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
               <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-set-create" title="Set all items to Create New Entry" style="font-size: 11px; padding: 4px 10px;">
                 All → New Entries
               </button>
+              <div style="height: 18px; width: 1px; background: var(--border-primary); margin: 0 4px;"></div>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-auto-web-photos" title="Search web photos automatically for all drafted components without photos" style="font-size: 11px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; color: #818cf8; border-color: rgba(99,102,241,0.3);">
+                <span>🌐</span> Auto-Find All Web Photos
+              </button>
             </div>
           </div>
 
@@ -554,6 +560,15 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
                   style="padding: 2px 5px; font-size: 9.5px; border-radius: 4px; line-height: 1.2;"
                 >
                   📸 Snap
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm btn-web-search-item"
+                  data-index="${idx}"
+                  title="Search internet for photos of this component"
+                  style="padding: 2px 5px; font-size: 9.5px; border-radius: 4px; line-height: 1.2; color: #818cf8;"
+                >
+                  🌐 Web
                 </button>
                 <label
                   class="btn btn-secondary btn-sm"
@@ -965,6 +980,72 @@ export async function renderInvoiceView(container, { navigateTo, openItemModal, 
         showToast('Photo removed', 'info');
       });
     });
+
+    // Image Action: Search web for photo of this component
+    const btnWebSearches = container.querySelectorAll('.btn-web-search-item');
+    btnWebSearches.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.index, 10);
+        const item = reconciledItems[idx];
+        if (!item) return;
+
+        const query = (item.name + ' ' + (item.partNumber || '')).trim();
+        openWebImageModal({
+          query,
+          onSelect: (blob) => {
+            item.imageBlob = blob;
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            item.previewUrl = URL.createObjectURL(blob);
+            render();
+            showToast(`Web photo attached to ${item.name}!`, 'success');
+          },
+        });
+      });
+    });
+
+    // Bulk Action: Auto-find web photos for all items without photos
+    const btnAutoWeb = container.querySelector('#btn-auto-web-photos');
+    if (btnAutoWeb) {
+      btnAutoWeb.addEventListener('click', async () => {
+        const targets = reconciledItems.filter(i => i.included && !i.imageBlob && !i.existingImageUrl);
+        if (targets.length === 0) {
+          showToast('All drafted items already have photos attached!', 'info');
+          return;
+        }
+
+        btnAutoWeb.disabled = true;
+        btnAutoWeb.innerHTML = `<div class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;"></div> Searching Web...`;
+
+        let foundCount = 0;
+        showToast(`Searching web photos for ${targets.length} components...`, 'info');
+
+        for (let i = 0; i < targets.length; i++) {
+          const item = targets[i];
+          const query = (item.name + ' ' + (item.partNumber || '')).trim();
+          try {
+            const results = await searchComponentImages(query);
+            if (results && results.length > 0) {
+              const best = results[0];
+              const blob = await fetchWebImageBlob(best.image || best.thumbnail);
+              item.imageBlob = blob;
+              if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+              item.previewUrl = URL.createObjectURL(blob);
+              foundCount++;
+            }
+          } catch (e) {
+            console.warn(`[Auto-Find Web Photos] Failed for ${item.name}:`, e.message);
+          }
+        }
+
+        render();
+        if (foundCount > 0) {
+          showToast(`✓ Attached web photos for ${foundCount} component${foundCount !== 1 ? 's' : ''}!`, 'success');
+        } else {
+          showToast('Could not find matching web photos.', 'warning');
+        }
+      });
+    }
 
     // Inline field modifications
     bindFieldChange('.item-field-name', 'name');

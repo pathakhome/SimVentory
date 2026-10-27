@@ -2007,3 +2007,13 @@ img {
   }
 }
 
+.web-image-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-primary) !important;
+}
+
+.web-image-card:hover .web-image-card-overlay {
+  opacity: 1 !important;
+}
+
+

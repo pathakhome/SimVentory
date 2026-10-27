@@ -778,6 +778,87 @@ app.post('/api/ai/proxy', async (req, res) => {
   }
 });
 
+// Web Component Image Search endpoint
+app.get('/api/search/images', async (req, res) => {
+  const query = (req.query.q || '').trim();
+  if (!query) return res.status(400).json({ error: 'Search query parameter "q" is required' });
+
+  try {
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    const r1 = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': userAgent },
+      signal: AbortSignal.timeout(6000),
+    });
+    const html = await r1.text();
+    const match = html.match(/vqd=([\d-]+)/) || html.match(/vqd=['"]([\d-]+)['"]/);
+    if (!match) {
+      return res.json({ results: [] });
+    }
+
+    const vqd = match[1];
+    const searchUrl = `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}`;
+    const r2 = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': userAgent,
+        'Referer': 'https://duckduckgo.com/',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (!r2.ok) {
+      return res.status(r2.status).json({ error: 'Image search provider returned error' });
+    }
+
+    const data = await r2.json();
+    const rawResults = Array.isArray(data.results) ? data.results : [];
+    const results = rawResults.slice(0, 14).map(r => ({
+      title: r.title || query,
+      image: r.image,
+      thumbnail: r.thumbnail,
+      width: r.width,
+      height: r.height,
+      source: r.source,
+    }));
+
+    res.json({ results });
+  } catch (err) {
+    console.warn('[SimVentory Image Search] Error:', err.message);
+    res.status(500).json({ error: 'Failed to search web images: ' + err.message, results: [] });
+  }
+});
+
+// Proxy and download web image (bypasses browser CORS & hotlinking blocks)
+app.get('/api/image/proxy', async (req, res) => {
+  const targetUrl = (req.query.url || '').trim();
+  if (!targetUrl) return res.status(400).json({ error: 'URL parameter is required' });
+
+  try {
+    const parsed = new URL(targetUrl);
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    const response = await fetch(parsed.toString(), {
+      headers: {
+        'User-Agent': userAgent,
+        'Referer': parsed.origin,
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch image from source' });
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.warn('[SimVentory Image Proxy] Error:', err.message);
+    res.status(500).json({ error: 'Proxy fetch failed: ' + err.message });
+  }
+});
+
 // Helpers for image files
 function getExtensionFromMime(mime) {
   if (mime.includes('png')) return 'png';
